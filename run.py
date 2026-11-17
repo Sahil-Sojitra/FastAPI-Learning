@@ -38,13 +38,17 @@ def reexec_in_venv() -> None:
         scripts_dir = str(VENV_DIR / ("Scripts" if IS_WIN else "bin"))
         env["PATH"] = scripts_dir + os.pathsep + env.get("PATH", "")
 
-        sys.exit(
-            subprocess.call(
-                [str(VENV_PYTHON)] + sys.argv,
-                env=env,
-                cwd=str(PROJECT_ROOT),
+        try:
+            sys.exit(
+                subprocess.call(
+                    [str(VENV_PYTHON)] + sys.argv,
+                    env=env,
+                    cwd=str(PROJECT_ROOT),
+                )
             )
-        )
+        except KeyboardInterrupt:
+            # Exit cleanly when Ctrl+C is pressed
+            sys.exit(0)
 
 
 def release_port(port: int = 8000) -> None:
@@ -83,4 +87,7 @@ if __name__ == "__main__":
     print("Starting Task Board API on http://127.0.0.1:8000 ...")
     import uvicorn
 
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    try:
+        uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
