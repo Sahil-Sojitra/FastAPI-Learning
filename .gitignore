@@ -50,6 +50,12 @@ venv.bak/
 .coverage
 htmlcov/
 
+# Database & backup files
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+
 # Operating System Files
 .DS_Store
 Thumbs.db
