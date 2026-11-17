@@ -1,6 +1,6 @@
-from sqlalchemy import String
+from sqlalchemy import String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
-
+from datetime import datetime
 from app.database import Base
 
 
@@ -12,3 +12,7 @@ class Task(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="TODO"
     )
+    created_at: Mapped[datetime | None] = mapped_column(
+    DateTime(),
+    nullable=True,
+)
