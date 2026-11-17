@@ -2,7 +2,7 @@ from time import perf_counter
 from fastapi import Depends, FastAPI, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
+from app.auth_routes import router as auth_router
 from app.database import Base, engine, get_db
 import app.models  # Registers Task model with Base
 from app.task_routes import router as tasks_router
@@ -24,6 +24,7 @@ async def add_process_time(request: Request, call_next):
 
 
 app.include_router(tasks_router)
+app.include_router(auth_router)
 
 
 @app.get("/health")
