@@ -1,10 +1,20 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.models import Task
-
+from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime, timezone
 
 class TaskNotFoundError(Exception):
     pass
+
+
+
+def _commit(db: Session) -> None:
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
 
 
 def find_task(db: Session, task_id: int) -> Task:
@@ -14,28 +24,42 @@ def find_task(db: Session, task_id: int) -> Task:
     return task
 
 
-def get_tasks(db: Session, status: str | None = None) -> list[Task]:
-    stmt = select(Task)
+def get_tasks(
+    db: Session,
+    status: str | None = None,
+    limit: int = 10,
+    offset: int = 0,
+) -> list[Task]:
+    stmt = select(Task).order_by(Task.id)
+
     if status is not None:
         stmt = stmt.where(Task.status == status)
+
+    stmt = stmt.offset(offset).limit(limit)
     return list(db.scalars(stmt).all())
 
 
 def create_task(db: Session, title: str) -> Task:
-    task = Task(title=title, status="TODO")
+    task = Task(
+        title=title,
+        status="TODO",
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+
     db.add(task)
-    db.commit()
+    _commit(db)
     db.refresh(task)
+
     return task
 
 
 def update_task_status(db: Session, task: Task, status: str) -> Task:
     task.status = status
-    db.commit()
+    _commit(db)
     db.refresh(task)
     return task
 
 
 def delete_task(db: Session, task: Task) -> None:
     db.delete(task)
-    db.commit()
+    _commit(db)

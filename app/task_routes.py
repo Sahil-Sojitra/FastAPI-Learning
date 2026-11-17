@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
-
+from typing import Literal
 from app.database import get_db
 from app.models import Task
 from app.schemas import TaskCreate, TaskRead, TaskStatusUpdate
@@ -27,8 +27,18 @@ def get_existing_task(task_id: int, db: Session = Depends(get_db)) -> Task:
 
 
 @router.get("", response_model=list[TaskRead])
-def get_tasks(status: str | None = None, db: Session = Depends(get_db)):
-    return service_get_tasks(db, status=status)
+def get_tasks(
+    status: Literal["TODO", "IN_PROGRESS", "DONE"] | None = None,
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    return service_get_tasks(
+        db,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{task_id}", response_model=TaskRead)
