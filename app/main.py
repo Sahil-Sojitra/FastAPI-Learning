@@ -1,23 +1,15 @@
-from fastapi import FastAPI,Request
-from app.task_routes import router as tasks_router
 from time import perf_counter
-import asyncio
-import time
+from fastapi import Depends, FastAPI, Request
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
+from app.database import Base, engine, get_db
+import app.models  # Registers Task model with Base
+from app.task_routes import router as tasks_router
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Task Board API")
-
-
-@app.get("/demo/blocking")
-async def blocking_wait():
-    time.sleep(3)
-    return {"message": "Blocking wait finished"}
-
-
-@app.get("/demo/nonblocking")
-async def nonblocking_wait():
-    await asyncio.sleep(3)
-    return {"message": "Nonblocking wait finished"}
 
 
 @app.middleware("http")
@@ -31,6 +23,7 @@ async def add_process_time(request: Request, call_next):
 
     return response
 
+
 app.include_router(tasks_router)
 
 
@@ -42,3 +35,7 @@ def health_check() -> dict[str, str]:
     }
 
 
+@app.get("/health/db")
+def database_health(db: Session = Depends(get_db)):
+    db.execute(text("SELECT 1"))
+    return {"database": "ok"}
