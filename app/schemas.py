@@ -1,5 +1,6 @@
 from typing import Literal
 from pydantic import BaseModel, Field,ConfigDict
+from datetime import datetime
 
 
 class TaskCreate(BaseModel):
@@ -11,6 +12,7 @@ class TaskRead(BaseModel):
     id: int
     title: str
     status: str
+    created_at : datetime|None 
 
 
 class TaskStatusUpdate(BaseModel):

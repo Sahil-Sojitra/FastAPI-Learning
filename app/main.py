@@ -7,7 +7,6 @@ from app.database import Base, engine, get_db
 import app.models  # Registers Task model with Base
 from app.task_routes import router as tasks_router
 
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Task Board API")
 
