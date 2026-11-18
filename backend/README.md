@@ -345,8 +345,22 @@ Under this feature-based architecture, any future capability integrates cleanly 
 | Method | Endpoint | Status Code | Description | Auth Required |
 | :--- | :--- | :--- | :--- | :--- |
 | `POST` | `/auth/register` | `201 Created` | Register a new user | No |
-| `POST` | `/auth/login` | `200 OK` | Authenticate and obtain JWT token | No |
+| `POST` | `/auth/login` | `200 OK` | Get an access token and establish a refresh session | No |
+| `POST` | `/auth/refresh` | `200 OK` | Rotate the session cookie and get a fresh access token | Refresh cookie |
+| `POST` | `/auth/logout` | `204 No Content` | Revoke the selected refresh session | Refresh cookie |
 | `GET` | `/auth/me` | `200 OK` | Get current authenticated user profile | Yes (Bearer) |
+
+Login and refresh return `access_token`, `token_type`, and `session_id`.
+Send `{"session_id":"<id from login>"}` to refresh or log out, with the
+corresponding `taskboard_refresh_<session_id>` cookie. Refresh does not need
+a bearer token. It returns `401` if the cookie is missing, expired, revoked,
+or already used. A successful refresh replaces the cookie.
+
+The refresh credential stays in an HttpOnly, SameSite=Lax cookie and is
+stored as a hash in the database. Cookies are Secure in production. Each
+sign-in has its own cookie and an absolute lifetime of
+`REFRESH_SESSION_EXPIRE_DAYS` (14 days by default). Logout revokes renewal;
+previously issued bearer tokens still expire according to their own lifetime.
 
 ### Tasks (`/tasks`)
 | Method | Endpoint | Status Code | Description | Auth Required |

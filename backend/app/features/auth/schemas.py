@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, UUID4
 
 
 class UserRegister(BaseModel):
@@ -24,4 +24,9 @@ class UserRead(BaseModel):
 
 class TokenRead(BaseModel):
     access_token: str
+    session_id: UUID4
     token_type: str = "bearer"
+
+
+class SessionRequest(BaseModel):
+    session_id: UUID4
