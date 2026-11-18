@@ -1,0 +1,60 @@
+.suggestions {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+.suggestions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.suggestions-header h3 {
+  font-size: 0.96rem;
+}
+.suggestion {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.suggestion input:not([type="checkbox"]) {
+  min-height: 36px;
+  padding-block: 6px;
+  font-size: 0.83rem;
+}
+.suggestions > .button {
+  justify-self: end;
+  margin-top: 5px;
+}
+
+.ai-intake {
+  margin-bottom: 15px;
+  border: 1px solid var(--accent-line);
+  border-radius: 11px;
+  background: linear-gradient(120deg, var(--accent-wash), var(--surface));
+  padding: 12px;
+}
+.ai-intake .dialog-description {
+  margin: 0;
+}
+.ai-source {
+  font-size: 0.79rem;
+  margin-bottom: 5px;
+  font-weight: 780;
+  overflow-wrap: anywhere;
+  color: var(--accent-strong);
+}
+.ai-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+.ai-starters .button {
+  font-size: 0.72rem;
+  min-height: 30px;
+  padding: 4px 7px;
+}

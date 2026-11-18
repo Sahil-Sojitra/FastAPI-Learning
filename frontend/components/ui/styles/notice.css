@@ -1,0 +1,40 @@
+.notice {
+  --notice-tone: var(--done);
+  --notice-bg: var(--done-wash);
+  --notice-line: #b5e2d3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 11px;
+  min-height: 43px;
+  margin-bottom: 12px;
+  border: 1px solid var(--notice-line);
+  border-radius: var(--radius-control);
+  background: var(--notice-bg);
+  color: var(--notice-tone);
+  font-size: 0.85rem;
+}
+.notice[data-tone="error"] {
+  --notice-tone: var(--danger);
+  --notice-bg: var(--danger-wash);
+  --notice-line: var(--danger-line);
+}
+.notice[data-tone="info"] {
+  --notice-tone: var(--accent-strong);
+  --notice-bg: var(--accent-wash);
+  --notice-line: var(--accent-line);
+}
+.notice > svg {
+  width: 16px;
+}
+.notice-copy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.notice .icon-button {
+  --button-fg: currentColor;
+  width: 30px;
+  min-height: 30px;
+}
