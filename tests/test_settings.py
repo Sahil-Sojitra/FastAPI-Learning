@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.settings import DEFAULT_DATABASE_URL, DEFAULT_DB_PATH, PROJECT_ROOT, Settings
+from app.core.config import DEFAULT_DATABASE_URL, DEFAULT_DB_PATH, PROJECT_ROOT, Settings
 
 VALID_SECRET = "x" * 32
 

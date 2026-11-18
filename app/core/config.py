@@ -4,7 +4,7 @@ from typing import Any, Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 ENV_FILE = PROJECT_ROOT / ".env"
 DEFAULT_DB_PATH = PROJECT_ROOT / "task_board.db"
 DEFAULT_DATABASE_URL = f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Backward-compatible exports for existing consumers
+# Convenient exports for configuration consumers
 JWT_SECRET = settings.JWT_SECRET.get_secret_value()
 JWT_ALGORITHM = settings.JWT_ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
