@@ -13,7 +13,7 @@ A modular, lightweight, production-grade RESTful API for managing user-owned tas
 - **User Ownership & Isolation**: Strict multi-tenant isolation where tasks belong to the authenticated owner. Users cannot access, view, modify, or delete another user's tasks.
 - **Full Task CRUD**: Create, read, update status, and delete tasks.
 - **Filtering & Pagination**: Paginated list retrieval (`limit`, `offset`) and status filtering (`TODO`, `IN_PROGRESS`, `DONE`) scoped to the requesting user before pagination.
-- **Transactional Database Architecture**: Synchronous SQLAlchemy 2.0 with automatic session rollbacks on failure and SQLite foreign key pragma enforcement.
+- **Transactional Database Architecture**: Synchronous SQLAlchemy 2.0 supporting both PostgreSQL (via modern Psycopg 3 driver `psycopg[binary]`) and SQLite, with automatic connection pinging (`pool_pre_ping=True`), session rollbacks on failure, and SQLite foreign key pragma enforcement.
 - **Typed Configuration**: Validated `Settings` management using `pydantic-settings` with secret masking and `.env` file discovery anchored to the project root.
 - **CORS Middleware**: Explicit CORS policy for modern web and mobile clients without wildcards.
 - **Learning & Historical Scripts**: Archived learning scripts moved to `scripts/learning/` documenting schema creation and rollback behaviors.
@@ -184,16 +184,28 @@ python -m uvicorn app.main:app --reload
 
 The API will be available at `http://127.0.0.1:8000`.
 
-### 2. Run Database Migrations
+### 2. Database Setup & Migrations (SQLite & PostgreSQL / Neon)
 
-Check migration consistency against models:
+The application seamlessly supports both local SQLite and PostgreSQL (such as Neon, Supabase, or AWS RDS):
+
+- **Driver**: Modern synchronous Psycopg 3 (`psycopg[binary]>=3.1.18`).
+- **Automatic Normalization**: Any standard connection string starting with `postgresql://` or `postgres://` is automatically normalized to `postgresql+psycopg://` without leaking credentials or query parameters.
+- **SSL & Connection Options**: Preserves Neon's SSL and channel-binding query options (e.g., `?sslmode=require&channel_binding=require`).
+- **Database Selection**: Configured via `DATABASE_URL` in `.env` (or OS environment variables). Falls back to the anchored project SQLite file (`task_board.db`) if unspecified.
+
+#### Inspect migration consistency against models:
 ```powershell
 python -m alembic check
 ```
 
-Apply latest migrations:
+#### Apply latest migrations to the active database:
 ```powershell
 python -m alembic upgrade head
+```
+
+#### Inspect current migration version:
+```powershell
+python -m alembic current
 ```
 
 ### 3. Run Automated Tests
