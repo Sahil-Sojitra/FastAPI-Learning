@@ -1,0 +1,105 @@
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.view-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--rail);
+}
+.view-toggle .button {
+  padding: 4px 9px;
+  border-radius: 7px;
+  min-height: 30px;
+}
+.view-toggle .button[aria-pressed="true"] {
+  --button-bg: var(--accent-wash);
+  --button-line: var(--accent-line);
+  --button-fg: var(--accent-strong);
+  --button-hover: #e2eaff;
+}
+.search-field {
+  position: relative;
+  width: clamp(153px, 24vw, 275px);
+  min-width: 0;
+}
+.search-field input {
+  min-height: 38px;
+  padding: 7px 57px 7px 34px;
+  background: var(--panel);
+  font-size: 0.83rem;
+}
+.search-field input::-webkit-search-cancel-button {
+  display: none;
+}
+.search-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.search-field kbd,
+.clear-search {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.search-field kbd {
+  right: 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 4px;
+  font:
+    670 0.65rem/1.4 "Manrope Variable",
+    sans-serif;
+  color: var(--muted);
+}
+.clear-search {
+  width: 29px;
+  min-height: 28px;
+}
+.refresh {
+  --button-bg: var(--panel);
+  --button-line: var(--line-strong);
+  min-height: 38px;
+}
+.refresh.is-loading svg {
+  animation: spin 1.15s linear infinite;
+}
+@media (max-width: 570px) {
+  .toolbar-actions {
+    min-width: 0;
+  }
+  .search-field {
+    width: 100%;
+  }
+  .search-field input {
+    padding-right: 31px;
+  }
+  .search-field kbd {
+    display: none;
+  }
+  .view-toggle {
+    flex-shrink: 0;
+  }
+  .view-toggle .button {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+}
+@media (max-width: 340px) {
+  .view-toggle .button svg {
+    display: none;
+  }
+}

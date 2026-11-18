@@ -1,0 +1,11 @@
+.board-toast {
+  position: fixed;
+  z-index: 15;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  width: min(360px, calc(100% - 28px));
+}
+.board-toast .notice {
+  margin: 0;
+  box-shadow: var(--shadow-menu);
+}
