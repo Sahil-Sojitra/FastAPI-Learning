@@ -1,0 +1,27 @@
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+@media (forced-colors: active) {
+  input[type="checkbox"] {
+    appearance: auto;
+  }
+  input[type="checkbox"]::before {
+    content: none;
+  }
+  :focus-visible {
+    outline: 2px solid Highlight;
+  }
+  .button-primary,
+  .view-toggle .button[aria-pressed="true"],
+  .menu-item[data-highlighted] {
+    border-color: Highlight;
+  }
+  .menu-item[data-highlighted] {
+    outline: 1px solid Highlight;
+  }
+}

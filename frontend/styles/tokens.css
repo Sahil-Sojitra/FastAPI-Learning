@@ -1,0 +1,33 @@
+:root {
+  color-scheme: light;
+  --canvas: #f6f7fb;
+  --rail: #fff;
+  --panel: #fff;
+  --surface: #fff;
+  --raised: #f4f6fa;
+  --hover: #eaedf5;
+  --line: #e2e6ef;
+  --line-strong: #c9d1e0;
+  --ink: #182235;
+  --muted: #4f5d73;
+  --quiet: #646f83;
+  --accent: #284fdb;
+  --accent-strong: #1e3fbd;
+  --accent-ink: #fff;
+  --accent-wash: #edf1ff;
+  --accent-line: #cbd7fb;
+  --todo: #465676;
+  --todo-wash: #eef1f8;
+  --doing: #875209;
+  --doing-wash: #fff1d9;
+  --done: #12624b;
+  --done-wash: #e4f5ee;
+  --danger: #a1233b;
+  --danger-wash: #fcebf0;
+  --danger-line: #efbcc7;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --shadow-menu: 0 16px 36px #273b6121, 0 2px 5px #273b6112;
+  --focus: 2px solid #2b55e5;
+  font-family: "Manrope Variable", "Segoe UI", system-ui, sans-serif;
+}
