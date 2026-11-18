@@ -1,0 +1,72 @@
+.account {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.account-trigger {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  text-align: left;
+  justify-content: flex-start;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 1px solid var(--accent-line);
+  border-radius: 9px;
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+  font-size: 0.88rem;
+  font-weight: 850;
+}
+.account-details {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.account-details strong,
+.account-details span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-details strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+.account-details span {
+  color: var(--quiet);
+  font-size: 0.67rem;
+}
+.account-menu {
+  min-width: min(210px, calc(100vw - 20px));
+}
+.account-menu-label {
+  display: grid;
+  gap: 3px;
+}
+.account-menu-label strong {
+  color: var(--ink);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 780px) {
+  .account {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    max-width: 53%;
+  }
+  .account-trigger {
+    min-height: 40px;
+  }
+  .account-details span {
+    display: none;
+  }
+}
