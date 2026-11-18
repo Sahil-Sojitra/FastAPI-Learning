@@ -1,121 +1,243 @@
 # FastAPI Task Board API
 
-A modular, lightweight RESTful API for managing tasks, built using **FastAPI**, **Pydantic v2**, and **Uvicorn**.
+A modular, lightweight, production-grade RESTful API for managing user-owned tasks, built using **FastAPI**, **SQLAlchemy 2.0**, **Pydantic v2**, **Alembic**, and **Uvicorn**.
 
 ---
 
 ## Features
 
-- **Full CRUD Operations**: Create, read, update status, and delete tasks.
-- **Filtering by Query Parameter**: Filter tasks by status (e.g., `?status=TODO`).
-- **Data Validation & Schemas**: Strictly typed input validation and response filtering using Pydantic models (`TaskCreate`, `TaskRead`, `TaskStatusUpdate`).
-- **Clean Architecture & Separation of Concerns**:
-  - **Routes**: Grouped under `APIRouter` with prefix `/tasks` and Swagger tag `Tasks`.
-  - **Services**: Reusable business logic and error handling (`task_service.py`).
-  - **Dependency Injection**: Centralized task lookup and `404 Not Found` handling via `Depends(get_existing_task)`.
-- **Custom HTTP Middleware**: Tracks request processing duration with `time.perf_counter()` and injects an `X-Process-Time-Ms` response header.
-- **Async Concurrency Demos**: Includes `/demo/blocking` and `/demo/nonblocking` endpoints demonstrating non-blocking I/O.
-- **Interactive Documentation**: Auto-generated Swagger UI and ReDoc OpenAPI documentation.
+- **JWT Authentication & Registration**: Secure user registration, password hashing via Argon2 (`pwdlib`), and signed JWT bearer tokens (`pyjwt`).
+- **User Ownership & Isolation**: Strict multi-tenant isolation where tasks belong to the authenticated owner. Users cannot access, view, modify, or delete another user's tasks.
+- **Full Task CRUD**: Create, read, update status, and delete tasks.
+- **Filtering & Pagination**: Paginated list retrieval (`limit`, `offset`) and status filtering (`TODO`, `IN_PROGRESS`, `DONE`) scoped to the requesting user before pagination.
+- **Transactional Database Architecture**: Synchronous SQLAlchemy 2.0 with automatic session rollbacks on failure and SQLite foreign key pragma enforcement.
+- **Typed Configuration**: Validated `Settings` management using `pydantic-settings` with secret masking and `.env` file discovery anchored to the project root.
+- **CORS Middleware**: Explicit CORS policy for modern web and mobile clients without wildcards.
+- **Learning & Historical Scripts**: Archived learning scripts moved to `scripts/learning/` documenting schema creation and rollback behaviors.
 
 ---
 
-## Project Structure
+## Project Structure & Responsibilities
+
+The application is structured into feature-based packages and centralized core/db infrastructure:
 
 ```text
 fastapi-task-board/
 ├── app/
-│   ├── __init__.py         # Marks app as a Python package
-│   ├── main.py             # FastAPI app initialization, middleware, demo & health routes
-│   ├── schemas.py          # Pydantic data models for request/response validation
-│   ├── task_routes.py      # APIRouter defining /tasks endpoints
-│   └── task_service.py     # Business logic, lookup helpers, and custom exceptions
-├── .gitignore              # Git ignore rules for Python, virtualenvs, and OS files
-├── README.md               # Project documentation
-└── requirements.txt        # Project dependencies
+│   ├── __init__.py                  # App package initialization
+│   ├── main.py                      # Application factory, middleware, CORS, and router mounting
+│   ├── core/                        # Global configuration and security utilities
+│   │   ├── __init__.py
+│   │   ├── config.py                # Pydantic Settings class, .env loading, and project constants
+│   │   └── security.py              # Password hashing (Argon2) and JWT token generation
+│   ├── db/                          # Database connection and metadata registry
+│   │   ├── __init__.py
+│   │   ├── base.py                  # Single authoritative DeclarativeBase
+│   │   ├── session.py               # Engine creation, SQLite event listeners, and get_db session generator
+│   │   └── model_registry.py        # Centralized import of all models for Alembic and test runners
+│   └── features/                    # Feature modules containing routers, schemas, services, models
+│       ├── __init__.py
+│       ├── auth/                    # User authentication & identity feature
+│       │   ├── __init__.py
+│       │   ├── dependencies.py      # HTTPBearer credential extraction and get_current_user dependency
+│       │   ├── exceptions.py        # Domain exceptions (EmailAlreadyRegisteredError, InvalidCredentialsError)
+│       │   ├── models.py            # User SQLAlchemy table model
+│       │   ├── router.py            # Endpoints: POST /auth/register, POST /auth/login, GET /auth/me
+│       │   ├── schemas.py           # Pydantic models (UserRegister, UserLogin, UserRead, TokenRead)
+│       │   └── service.py           # Business logic: user registration and authentication
+│       ├── tasks/                   # Task board feature
+│       │   ├── __init__.py
+│       │   ├── exceptions.py        # Domain exceptions (TaskNotFoundError)
+│       │   ├── models.py            # Task SQLAlchemy table model (with owner_id foreign key)
+│       │   ├── router.py            # Endpoints: GET, POST, PATCH, DELETE /tasks
+│       │   ├── schemas.py           # Pydantic models (TaskCreate, TaskStatusUpdate, TaskRead)
+│       │   └── service.py           # Business logic: user-scoped task querying, creation, status update, deletion
+│       └── health/                  # Health check & system diagnostics
+│           ├── __init__.py
+│           └── router.py            # Endpoints: GET /health, GET /health/db
+├── migrations/                      # Alembic schema migrations and environment configuration
+├── scripts/
+│   ├── __init__.py
+│   └── learning/                    # Preserved learning and verification scripts
+│       ├── __init__.py
+│       ├── check_rollback.py        # Validates rollback handling on SQLite integrity error
+│       ├── init_db.py               # Historical schema initialization (superseded by Alembic)
+│       └── save_task.py             # Validates basic task persistence
+├── tests/                           # Isolated pytest test suite
+├── .env.example                     # Environment template with secret placeholders
+├── pytest.ini                       # Test runner configuration (pythonpath = .)
+├── requirements.txt                 # Pinned project dependencies
+└── run.py                           # Smart development launcher (venv auto-activation, zombie port cleanup)
 ```
 
----
+### Module Responsibilities
 
-## API Endpoints
-
-### Tasks (`/tasks`)
-
-| Method | Endpoint | Status Code | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/tasks` | `200 OK` | Get all tasks (optional `?status=` query filter) |
-| `GET` | `/tasks/{task_id}` | `200 OK` | Get a specific task by its ID |
-| `POST` | `/tasks` | `201 Created` | Create a new task |
-| `PATCH` | `/tasks/{task_id}` | `200 OK` | Update a task's status (`TODO`, `IN_PROGRESS`, `DONE`) |
-| `DELETE` | `/tasks/{task_id}` | `204 No Content` | Delete a task |
-
-### System & Demos
-
-| Method | Endpoint | Status Code | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/health` | `200 OK` | Service health check |
-| `GET` | `/demo/blocking` | `200 OK` | Demonstrates thread-blocking sleep (`time.sleep`) |
-| `GET` | `/demo/nonblocking` | `200 OK` | Demonstrates non-blocking async sleep (`asyncio.sleep`) |
+- **`app/main.py`**: Initializes the FastAPI app, attaches process-timing and CORS middleware, and mounts routers. Does not contain endpoint business logic.
+- **`app/core/config.py`**: Loads `.env` via an absolute path anchored to the project root, parses environment variables, masks secrets in validation errors, and exposes a strongly typed `settings` object.
+- **`app/core/security.py`**: Handles password hashing (`argon2`), verification, and access token JWT encoding.
+- **`app/db/base.py`**: Defines the single shared `Base = DeclarativeBase()` instance.
+- **`app/db/session.py`**: Owns database `engine`, foreign key PRAGMA event listener, and `get_db` FastAPI dependency.
+- **`app/db/model_registry.py`**: Imports both `User` and `Task` so all model table definitions are attached to `Base.metadata` for Alembic migrations and test engines.
+- **`app/features/*/router.py`**: Defines HTTP routing, status codes, query parameters, dependency injection, and exception translation (`HTTPException`).
+- **`app/features/*/service.py`**: Encapsulates database transactions, queries, business logic, and raises domain exceptions.
+- **`app/features/*/schemas.py`**: Defines Pydantic validation schemas for request bodies and response serialization.
+- **`app/features/*/models.py`**: Defines database table mappings inheriting from `app.db.base.Base`.
+- **`app/features/*/exceptions.py`**: Defines custom domain exceptions decoupled from HTTP concepts.
 
 ---
 
-## Getting Started
+## Commands
 
-### 1. Prerequisites
-- **Python 3.10+** installed on your system.
+### 1. Run Development Server
 
-### 2. Setup Virtual Environment
-
-**Windows (PowerShell):**
+Using the smart launcher (automatically manages `.venv` and frees port 8000 if orphaned):
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+python run.py
 ```
 
-**macOS / Linux:**
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Run the Development Server
-```bash
+Or run directly with Uvicorn:
+```powershell
 python -m uvicorn app.main:app --reload
 ```
 
-The API will be accessible at `http://127.0.0.1:8000`.
+The API will be available at `http://127.0.0.1:8000`.
+
+### 2. Run Database Migrations
+
+Check migration consistency against models:
+```powershell
+python -m alembic check
+```
+
+Apply latest migrations:
+```powershell
+python -m alembic upgrade head
+```
+
+### 3. Run Automated Tests
+
+Execute the complete isolated test suite:
+```powershell
+python -m pytest -v
+```
 
 ---
 
-## Interactive API Documentation
+## Detailed Request Flow
 
-Once the server is running, visit:
-- **Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- **ReDoc**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+### 1. `POST /auth/login`
+```
+Client Request -> [app/main.py] (Timing & CORS Middleware)
+                -> [app/features/auth/router.py:login]
+                -> [app/db/session.py:get_db] yields Session
+                -> [app/features/auth/service.py:authenticate_user]
+                   - Normalizes email to lowercase
+                   - Queries User by email
+                   - Verifies password hash via [app/core/security.py:verify_password]
+                   - Raises InvalidCredentialsError on mismatch
+                -> [app/core/security.py:create_access_token] signs JWT with sub=user.id, exp, iat
+                -> Returns TokenRead(access_token="...", token_type="bearer") with status 200
+```
+
+### 2. `GET /auth/me`
+```
+Client Request -> [app/main.py] (Timing & CORS Middleware)
+                -> [app/features/auth/router.py:get_me]
+                -> Depends([app/features/auth/dependencies.py:get_current_user])
+                   - Extracts token from "Authorization: Bearer <token>"
+                   - Decodes and validates JWT using settings.JWT_SECRET and settings.JWT_ALGORITHM
+                   - Parses user_id from sub claim
+                   - Queries db.get(User, user_id)
+                   - Raises HTTPException(401) if invalid, expired, or user not found
+                -> Passes authenticated User model to route handler
+                -> Serializes via UserRead schema (status 200)
+```
+
+### 3. `POST /tasks`
+```
+Client Request -> [app/main.py] (Timing & CORS Middleware)
+                -> [app/features/tasks/router.py:create_task]
+                -> Validates body against TaskCreate(title=...)
+                -> Depends([app/features/auth/dependencies.py:get_current_user]) returns User
+                -> Depends([app/db/session.py:get_db]) yields Session
+                -> [app/features/tasks/service.py:create_task]
+                   - Instantiates Task(title=..., status="TODO", owner_id=user.id, created_at=utc_now)
+                   - db.add(task) and _commit(db)
+                   - db.refresh(task)
+                -> Serializes via TaskRead schema (status 201)
+```
+
+### 4. `PATCH /tasks/{task_id}`
+```
+Client Request -> [app/main.py] (Timing & CORS Middleware)
+                -> [app/features/tasks/router.py:update_task_status]
+                -> Depends([app/features/tasks/router.py:get_existing_task])
+                   - Authenticates user via get_current_user
+                   - Calls [app/features/tasks/service.py:find_task(db, task_id, owner_id=user.id)]
+                   - If task does not exist or owner_id does not match: raises TaskNotFoundError
+                   - Translates TaskNotFoundError -> HTTPException(status_code=404, detail="Task not found")
+                -> Validates body against TaskStatusUpdate(status=...)
+                -> [app/features/tasks/service.py:update_task_status]
+                   - task.status = update.status
+                   - _commit(db) and db.refresh(task)
+                -> Serializes via TaskRead schema (status 200)
+```
 
 ---
 
-## Example Usage
+## Authentication vs. Ownership
 
-### Create a Task
-```bash
-curl -X POST "http://127.0.0.1:8000/tasks" \
-     -H "Content-Type: application/json" \
-     -d '{"title": "Implement database integration"}'
-```
+- **Authentication (`Who are you?`)**:
+  - Handled by `app/features/auth/dependencies.py:get_current_user`.
+  - Validates cryptographic signature and expiration of the JWT bearer token.
+  - Verifies that the user exists in the `users` table.
+  - If authentication fails, the request is immediately rejected with `401 Unauthorized`.
+- **Ownership (`What are you allowed to access?`)**:
+  - Handled by `app/features/tasks/service.py` and `app/features/tasks/router.py`.
+  - Once the user is authenticated, every task operation is strictly scoped to `owner_id == user.id`.
+  - Creating a task automatically assigns `owner_id = user.id`. Clients cannot specify or override `owner_id`.
+  - Listing tasks filters by `Task.owner_id == user.id` before applying `limit` and `offset`.
+  - Retrieving, updating, or deleting a specific task requires matching both `id == task_id` and `owner_id == user.id`.
+  - If a task exists in the database but belongs to a different user, the system returns `404 Not Found` (never `403 Forbidden`) to avoid leaking the existence of other users' tasks.
 
-### Filter Tasks by Status
-```bash
-curl "http://127.0.0.1:8000/tasks?status=IN_PROGRESS"
-```
+---
 
-### Update Task Status
-```bash
-curl -X PATCH "http://127.0.0.1:8000/tasks/1" \
-     -H "Content-Type: application/json" \
-     -d '{"status": "DONE"}'
-```
+## Architecture for Future Features (Ingestion & Streaming)
+
+Under this feature-based architecture, any future capability integrates cleanly as an independent feature package under `app/features/` without coupling to existing features:
+
+### 1. Example: Ingestion Feature (`app/features/ingestion/`)
+- `app/features/ingestion/router.py`: Exposes endpoints for file uploads, CSV imports, or webhook payloads (e.g. `POST /ingestion/tasks/csv`).
+- `app/features/ingestion/schemas.py`: Defines batch upload schemas and validation models.
+- `app/features/ingestion/service.py`: Contains parsing logic, batch validation, and invokes `app.features.tasks.service:create_task` or bulk insertions.
+- `app/features/ingestion/models.py`: (Optional) Tables tracking batch ingestion job status, logs, or history.
+
+### 2. Example: Streaming / Real-time Feature (`app/features/streaming/`)
+- `app/features/streaming/router.py`: WebSocket or Server-Sent Events (SSE) endpoints (e.g. `GET /streaming/tasks/events`).
+- `app/features/streaming/service.py`: Manages active connections, pub/sub channels, or event queues dispatching task update notifications.
+
+---
+
+## API Endpoints Overview
+
+### Auth (`/auth`)
+| Method | Endpoint | Status Code | Description | Auth Required |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/auth/register` | `201 Created` | Register a new user | No |
+| `POST` | `/auth/login` | `200 OK` | Authenticate and obtain JWT token | No |
+| `GET` | `/auth/me` | `200 OK` | Get current authenticated user profile | Yes (Bearer) |
+
+### Tasks (`/tasks`)
+| Method | Endpoint | Status Code | Description | Auth Required |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/tasks` | `200 OK` | List tasks owned by the caller (`?status=`, `?limit=`, `?offset=`) | Yes (Bearer) |
+| `GET` | `/tasks/{task_id}` | `200 OK` | Get task by ID (caller must be owner) | Yes (Bearer) |
+| `POST` | `/tasks` | `201 Created` | Create task (assigned to caller) | Yes (Bearer) |
+| `PATCH` | `/tasks/{task_id}` | `200 OK` | Update task status (`TODO`, `IN_PROGRESS`, `DONE`) | Yes (Bearer) |
+| `DELETE` | `/tasks/{task_id}` | `204 No Content`| Delete task (caller must be owner) | Yes (Bearer) |
+
+### System & Health (`/health`)
+| Method | Endpoint | Status Code | Description | Auth Required |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/health` | `200 OK` | Service uptime check | No |
+| `GET` | `/health/db` | `200 OK` | Database connectivity check (`SELECT 1`) | No |
