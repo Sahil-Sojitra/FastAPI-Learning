@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 import jwt
 from pwdlib import PasswordHash
 from app.core.config import settings
@@ -23,6 +24,7 @@ def create_access_token(user_id: int) -> str:
     payload = {
         "sub": str(user_id),
         "iat": now,
+        "jti": str(uuid4()),
         "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     }
 

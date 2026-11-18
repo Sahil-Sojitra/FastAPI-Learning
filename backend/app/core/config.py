@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     JWT_SECRET: SecretStr
     JWT_ALGORITHM: Literal["HS256"] = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=15, ge=1, le=1440)
+    REFRESH_SESSION_EXPIRE_DAYS: int = Field(default=14, ge=1, le=90)
     DATABASE_URL: str = DEFAULT_DATABASE_URL
     NEON_DB: str | None = None
     GEMINI_API_KEY: SecretStr | None = None
