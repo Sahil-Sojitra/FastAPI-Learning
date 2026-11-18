@@ -1,17 +1,10 @@
 from collections.abc import Iterator
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase, Session
+from sqlalchemy.orm import Session
 from sqlite3 import Connection as SQLiteConnection
 
-from app.settings import DB_PATH, DATABASE_URL, settings
-
-BASE_DIR = settings.PROJECT_ROOT if hasattr(settings, "PROJECT_ROOT") else DB_PATH.parent
-
-
-class Base(DeclarativeBase):
-    pass
-
+from app.core.config import settings
 
 connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
 
