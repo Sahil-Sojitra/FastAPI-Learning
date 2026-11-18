@@ -6,6 +6,9 @@ A modular, lightweight, production-grade RESTful API for managing user-owned tas
 
 ## Features
 
+- **Request ID Tracking**: Every HTTP request receives an immutable, server-generated UUID4 stored in `request.state.request_id` and returned in the `X-Request-ID` response header.
+- **Structured JSON Request Logging**: Single-line JSON request-summary logging using Python's standard `logging` library, capturing timestamps, method, matched route template, status code, and duration.
+- **Safe Centralized Error Handling**: Unexpected failures are converted into safe `500 Internal Server Error` JSON responses containing the correlating `request_id`, while logging sanitized stack locations without leaking query strings, parameters, or secret credentials.
 - **JWT Authentication & Registration**: Secure user registration, password hashing via Argon2 (`pwdlib`), and signed JWT bearer tokens (`pyjwt`).
 - **User Ownership & Isolation**: Strict multi-tenant isolation where tasks belong to the authenticated owner. Users cannot access, view, modify, or delete another user's tasks.
 - **Full Task CRUD**: Create, read, update status, and delete tasks.
@@ -26,9 +29,12 @@ fastapi-task-board/
 ├── app/
 │   ├── __init__.py                  # App package initialization
 │   ├── main.py                      # Application factory, middleware, CORS, and router mounting
-│   ├── core/                        # Global configuration and security utilities
+│   ├── core/                        # Global configuration, security, and observability utilities
 │   │   ├── __init__.py
 │   │   ├── config.py                # Pydantic Settings class, .env loading, and project constants
+│   │   ├── exception_handlers.py    # Centralized 500 handler and sanitized stack trace extractor
+│   │   ├── logging.py               # JSON formatter and idempotent logger setup
+│   │   ├── middleware.py            # Request ID, process timing, and structured request logging middleware
 │   │   └── security.py              # Password hashing (Argon2) and JWT token generation
 │   ├── db/                          # Database connection and metadata registry
 │   │   ├── __init__.py
@@ -72,7 +78,10 @@ fastapi-task-board/
 
 ### Module Responsibilities
 
-- **`app/main.py`**: Initializes the FastAPI app, attaches process-timing and CORS middleware, and mounts routers. Does not contain endpoint business logic.
+- **`app/main.py`**: Initializes the FastAPI app (`debug=False`), attaches `CORSMiddleware`, registers `RequestLoggingMiddleware`, attaches the centralized 500 error handler, and mounts routers.
+- **`app/core/logging.py`**: Configures Python's standard `logging` with `JsonFormatter` to format log records into structured JSON lines. Prevents duplicate handlers.
+- **`app/core/middleware.py`**: Manages the request lifecycle: assigns server-side `request_id`, tracks total execution duration (`X-Process-Time-Ms`), identifies the matched route template (or `unmatched_route`), and emits exactly one request summary log event.
+- **`app/core/exception_handlers.py`**: Catches unhandled exceptions, logs an error event with sanitized stack frames, and returns a safe HTTP 500 JSON response.
 - **`app/core/config.py`**: Loads `.env` via an absolute path anchored to the project root, parses environment variables, masks secrets in validation errors, and exposes a strongly typed `settings` object.
 - **`app/core/security.py`**: Handles password hashing (`argon2`), verification, and access token JWT encoding.
 - **`app/db/base.py`**: Defines the single shared `Base = DeclarativeBase()` instance.
@@ -83,6 +92,79 @@ fastapi-task-board/
 - **`app/features/*/schemas.py`**: Defines Pydantic validation schemas for request bodies and response serialization.
 - **`app/features/*/models.py`**: Defines database table mappings inheriting from `app.db.base.Base`.
 - **`app/features/*/exceptions.py`**: Defines custom domain exceptions decoupled from HTTP concepts.
+
+---
+
+## Observability & Error Handling
+
+### 1. Request IDs
+
+Every HTTP request is assigned a unique UUID4 by `RequestLoggingMiddleware`.
+- **Server Authority**: Request IDs are generated strictly server-side. Incoming client `X-Request-ID` headers are ignored to prevent request spoofing or ID collisions.
+- **State Storage**: The ID is stored in `request.state.request_id` for access by dependencies, service routines, and exception handlers.
+- **Header Propagation**: The ID is returned in the `X-Request-ID` HTTP response header for all responses: successful 2xx responses, handled 4xx errors, and unhandled 500 errors.
+
+### 2. Structured Request Logging (JSON)
+
+Every request emits **one single request-summary log event** in JSON format via standard Python logging (`logger.info`).
+
+#### Example Safe Request-Summary Log
+```json
+{
+  "timestamp": "2026-11-18T07:24:39.396749+00:00",
+  "level": "INFO",
+  "request_id": "7907285e-485c-415c-8f97-3e80417fe8ba",
+  "method": "GET",
+  "route": "/tasks/{task_id}",
+  "status": 200,
+  "status_code": 200,
+  "duration_ms": 1.45
+}
+```
+
+#### How to Correlate a Response to Logs
+When a client observes an issue or receives an error:
+1. Copy the `X-Request-ID` response header (e.g., `7907285e-485c-415c-8f97-3e80417fe8ba`) or the `request_id` field from a 500 error body.
+2. Search the JSON log stream for `"request_id": "7907285e-485c-415c-8f97-3e80417fe8ba"`.
+3. Locate both the request summary and any accompanying `unexpected_error` log entries sharing that ID.
+
+#### Duration Measurement (`X-Process-Time-Ms`)
+`X-Process-Time-Ms` measures the total elapsed server-side wall-clock processing time (in milliseconds) from when the request enters `RequestLoggingMiddleware` to when the response headers and body are ready for dispatch.
+
+#### Deliberately Excluded Information (Privacy & Security)
+To comply with security and data-protection standards, the application **never** logs:
+- Raw URL paths containing potential IDs or sensitive identifiers.
+- Query parameter strings or parsed query dicts.
+- Request headers (preventing leakage of `Authorization: Bearer <token>` or cookies).
+- Request bodies (preventing storage of plaintext passwords or personal information).
+- SQL statements with raw parameters or traceback local variables.
+
+### 3. Expected vs. Unexpected Errors
+
+#### Expected Errors (Handled Client & Domain Errors)
+- Examples: 401 Unauthorized (expired/missing token), 404 Not Found (missing task), 409 Conflict (duplicate email), 422 Unprocessable Entity (schema validation failure).
+- **Behavior**: Preserves exact HTTP status codes, original response shapes, and headers (e.g. `WWW-Authenticate: Bearer`). Receives standard `X-Request-ID` and `X-Process-Time-Ms` headers. Emits an `INFO` request summary.
+
+#### Unexpected Errors (Unhandled Server Exceptions)
+- Examples: Uncaught `RuntimeError`, unexpected database driver crash, unhandled exceptions in third-party libraries.
+- **Behavior**: Handled centrally by `app/core/exception_handlers.py`.
+- **Response**: Returns HTTP 500 with a sanitized payload:
+  ```json
+  {
+    "detail": "Internal server error",
+    "request_id": "54a0ad61-ddf8-496e-967c-1902545c3c38"
+  }
+  ```
+- **Error Event**: Logs an `ERROR` event containing only:
+  - `event`: `"unexpected_error"`
+  - `request_id`: matching request UUID
+  - `exception_class`: e.g. `"RuntimeError"`
+  - `stack`: Sanitized list of frames containing only `{"file": ..., "line": ..., "function": ...}` without raw code strings, arguments, or local variables.
+
+### 4. Known Limitations
+
+- **Streaming Responses**: If an error occurs after a streaming response has started sending bytes over the wire, HTTP headers and status codes can no longer be modified. In such cases, the exception propagates to ASGI connection tear-down without attempting to replace the partial response.
+- **Background Tasks**: Tasks scheduled via `BackgroundTasks` run *after* the HTTP response has completed and been dispatched. Any exceptions occurring within a detached background task cannot alter the client's HTTP response status or headers, but will be captured by global task exception handlers.
 
 ---
 

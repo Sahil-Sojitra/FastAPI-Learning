@@ -1,15 +1,22 @@
-from time import perf_counter
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.exception_handlers import unhandled_exception_handler
+from app.core.logging import setup_logging
+from app.core.middleware import RequestLoggingMiddleware
 import app.db.model_registry  # Ensures all models are registered with Base.metadata
 from app.features.auth.router import router as auth_router
 from app.features.health.router import router as health_router
 from app.features.tasks.router import router as tasks_router
 
-app = FastAPI(title="Task Board API")
+setup_logging()
 
+app = FastAPI(title="Task Board API", debug=False)
+
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -17,19 +24,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
-
-
-@app.middleware("http")
-async def add_process_time(request: Request, call_next):
-    started = perf_counter()
-
-    response = await call_next(request)
-
-    elapsed_ms = (perf_counter() - started) * 1000
-    response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.2f}"
-
-    return response
-
 
 app.include_router(tasks_router)
 app.include_router(auth_router)
