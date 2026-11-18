@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=15, ge=1, le=1440)
     DATABASE_URL: str = DEFAULT_DATABASE_URL
     NEON_DB: str | None = None
+    GEMINI_API_KEY: SecretStr | None = None
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
     CORS_ORIGINS: list[str] = Field(default_factory=list)
 
     @field_validator("DATABASE_URL")
@@ -62,6 +64,8 @@ class Settings(BaseSettings):
                 data = self.source()
                 if "JWT_SECRET" in data and isinstance(data["JWT_SECRET"], str):
                     data["JWT_SECRET"] = SecretStr(data["JWT_SECRET"])
+                if "GEMINI_API_KEY" in data and isinstance(data["GEMINI_API_KEY"], str):
+                    data["GEMINI_API_KEY"] = SecretStr(data["GEMINI_API_KEY"])
                 return data
 
         return (
@@ -104,4 +108,5 @@ JWT_SECRET = settings.JWT_SECRET.get_secret_value()
 JWT_ALGORITHM = settings.JWT_ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 DATABASE_URL = settings.DATABASE_URL
+GEMINI_MODEL = settings.GEMINI_MODEL
 DB_PATH = DEFAULT_DB_PATH

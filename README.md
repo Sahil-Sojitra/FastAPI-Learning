@@ -12,6 +12,7 @@ A modular, lightweight, production-grade RESTful API for managing user-owned tas
 - **JWT Authentication & Registration**: Secure user registration, password hashing via Argon2 (`pwdlib`), and signed JWT bearer tokens (`pyjwt`).
 - **User Ownership & Isolation**: Strict multi-tenant isolation where tasks belong to the authenticated owner. Users cannot access, view, modify, or delete another user's tasks.
 - **Full Task CRUD**: Create, read, update status, and delete tasks.
+- **AI Task Breakdown**: Breaks down tasks into 3–7 actionable, validated steps using the official `google-genai` SDK and structured JSON output.
 - **Filtering & Pagination**: Paginated list retrieval (`limit`, `offset`) and status filtering (`TODO`, `IN_PROGRESS`, `DONE`) scoped to the requesting user before pagination.
 - **Transactional Database Architecture**: Synchronous SQLAlchemy 2.0 supporting both PostgreSQL (via modern Psycopg 3 driver `psycopg[binary]`) and SQLite, with automatic connection pinging (`pool_pre_ping=True`), session rollbacks on failure, and SQLite foreign key pragma enforcement.
 - **Typed Configuration**: Validated `Settings` management using `pydantic-settings` with secret masking and `.env` file discovery anchored to the project root.
@@ -43,6 +44,14 @@ fastapi-task-board/
 │   │   └── model_registry.py        # Centralized import of all models for Alembic and test runners
 │   └── features/                    # Feature modules containing routers, schemas, services, models
 │       ├── __init__.py
+│       ├── ai/                      # AI task breakdown feature (Gemini)
+│       │   ├── __init__.py
+│       │   ├── dependencies.py      # Dependency injection for AIService & GeminiProvider
+│       │   ├── exceptions.py        # Domain exceptions (AIServiceNotConfiguredError, AIGenerationTimeoutError, etc.)
+│       │   ├── provider.py          # GeminiProvider implementation using official google-genai SDK
+│       │   ├── router.py            # Endpoints: POST /ai/task-breakdown
+│       │   ├── schemas.py           # Pydantic models (TaskBreakdownRequest, TaskBreakdownResponse)
+│       │   └── service.py           # Business logic: orchestrating task breakdown generation
 │       ├── auth/                    # User authentication & identity feature
 │       │   ├── __init__.py
 │       │   ├── dependencies.py      # HTTPBearer credential extraction and get_current_user dependency
@@ -277,6 +286,24 @@ Client Request -> [app/main.py] (Timing & CORS Middleware)
                 -> Serializes via TaskRead schema (status 200)
 ```
 
+### 5. `POST /ai/task-breakdown`
+```
+Client Request -> [app/main.py] (Timing & CORS Middleware)
+                -> [app/features/ai/router.py:task_breakdown]
+                -> Depends([app/features/auth/dependencies.py:get_current_user]) returns User
+                -> Depends([app/features/ai/dependencies.py:get_ai_service]) returns AIService
+                -> Validates body against TaskBreakdownRequest(description=...)
+                -> [app/features/ai/service.py:break_down_task]
+                -> [app/features/ai/provider.py:GeminiProvider.generate_task_breakdown]
+                   - Checks client is configured (raises AIServiceNotConfiguredError -> 503 if missing)
+                   - Sets 30s deadline (asyncio.wait_for) and 30,000ms transport timeout (types.HttpOptions)
+                   - Sets attempts=1 (types.HttpRetryOptions) to prevent hidden retries
+                   - Calls client.aio.models.generate_content with response_schema=TaskBreakdownResponse
+                   - Validates response with TaskBreakdownResponse.model_validate_json
+                   - Maps timeouts -> 504, provider/network errors -> 503, invalid output -> 502
+                -> Serializes via TaskBreakdownResponse schema (status 200)
+```
+
 ---
 
 ## Authentication vs. Ownership
@@ -335,3 +362,37 @@ Under this feature-based architecture, any future capability integrates cleanly 
 | :--- | :--- | :--- | :--- | :--- |
 | `GET` | `/health` | `200 OK` | Service uptime check | No |
 | `GET` | `/health/db` | `200 OK` | Database connectivity check (`SELECT 1`) | No |
+
+### AI (`/ai`)
+| Method | Endpoint | Status Code | Description | Auth Required |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/ai/task-breakdown` | `200 OK` | Generate 3–7 actionable task suggestions via Gemini | Yes (Bearer) |
+
+---
+
+## Testing Locally in Swagger UI (`/docs`)
+
+1. **Start the API server**:
+   ```powershell
+   python run.py
+   ```
+2. **Open Swagger UI**:
+   Navigate to `http://127.0.0.1:8000/docs` in your browser.
+3. **Register or Login**:
+   - Expand `POST /auth/login` (or `/auth/register` if you need a user).
+   - Click **Try it out**, enter your email and password, and click **Execute**.
+   - Copy the `access_token` string from the JSON response.
+4. **Authorize Swagger**:
+   - Scroll to the top and click the green **Authorize** button.
+   - Enter your token into the Value field (or `Bearer <token>` depending on prompt) and click **Authorize**.
+5. **Execute AI Task Breakdown**:
+   - Expand `POST /ai/task-breakdown`.
+   - Click **Try it out**.
+   - Provide a JSON request body:
+     ```json
+     {
+       "description": "Add a forgot-password feature"
+     }
+     ```
+   - Click **Execute**.
+   - View the returned JSON with 3–7 actionable suggestions under `suggestions`.
