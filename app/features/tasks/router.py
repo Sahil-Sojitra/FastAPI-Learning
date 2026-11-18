@@ -3,11 +3,13 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
-from app import task_service
-from app.auth_dependencies import get_current_user
-from app.database import get_db
-from app.models import Task, User
-from app.schemas import TaskCreate, TaskRead, TaskStatusUpdate
+from app.db.session import get_db
+from app.features.auth.dependencies import get_current_user
+from app.features.auth.models import User
+from app.features.tasks import service as task_service
+from app.features.tasks.exceptions import TaskNotFoundError
+from app.features.tasks.models import Task
+from app.features.tasks.schemas import TaskCreate, TaskRead, TaskStatusUpdate
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -23,7 +25,7 @@ def get_existing_task(
             task_id=task_id,
             owner_id=user.id,
         )
-    except task_service.TaskNotFoundError as exc:
+    except TaskNotFoundError as exc:
         raise HTTPException(
             status_code=404,
             detail=str(exc),

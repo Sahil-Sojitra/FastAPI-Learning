@@ -1,14 +1,12 @@
 from time import perf_counter
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-from app.auth_routes import router as auth_router
-from app.database import Base, engine, get_db
-import app.models  # Registers Task model with Base
-from app.settings import settings
-from app.task_routes import router as tasks_router
 
+from app.core.config import settings
+import app.db.model_registry  # Ensures all models are registered with Base.metadata
+from app.features.auth.router import router as auth_router
+from app.features.health.router import router as health_router
+from app.features.tasks.router import router as tasks_router
 
 app = FastAPI(title="Task Board API")
 
@@ -35,17 +33,4 @@ async def add_process_time(request: Request, call_next):
 
 app.include_router(tasks_router)
 app.include_router(auth_router)
-
-
-@app.get("/health")
-def health_check() -> dict[str, str]:
-    return {
-        "status": "ok",
-        "service": "task-board",
-    }
-
-
-@app.get("/health/db")
-def database_health(db: Session = Depends(get_db)):
-    db.execute(text("SELECT 1"))
-    return {"database": "ok"}
+app.include_router(health_router)
