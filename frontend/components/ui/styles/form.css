@@ -1,0 +1,29 @@
+.form {
+  display: grid;
+  gap: 10px;
+}
+.form label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.86rem;
+  font-weight: 760;
+}
+.form .notice {
+  margin: 0;
+}
+.field-hint {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: -4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.counter {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.counter[data-invalid] {
+  color: var(--danger);
+}
