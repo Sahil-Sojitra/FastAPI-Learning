@@ -1,79 +1,135 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, labels, statuses, type User } from "./api-client";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { api, type User } from "./api-client";
 import { Board } from "./board";
 import { Brand } from "./brand";
+import { Icon } from "./icons";
 
 const sessionKey = "taskboard.access-token";
-type Session = { token: string; user: User };
+
+function readSavedToken() {
+  try {
+    return sessionStorage.getItem(sessionKey);
+  } catch {
+    return null;
+  }
+}
+
+function saveToken(token: string | null) {
+  try {
+    if (token) sessionStorage.setItem(sessionKey, token);
+    else sessionStorage.removeItem(sessionKey);
+  } catch {
+    // The active session still works when the browser blocks storage.
+  }
+}
+
+function expiresAt(token: string) {
+  try {
+    const encoded = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const { exp } = JSON.parse(atob(encoded));
+    return typeof exp === "number" && Number.isFinite(exp) ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+function SubscribeToExpiry({
+  token,
+  expire,
+}: {
+  token: string;
+  expire: () => void;
+}) {
+  useEffect(() => {
+    const expiry = expiresAt(token);
+    if (expiry === null) return;
+    const check = () => {
+      if (Date.now() >= expiry) expire();
+    };
+    const timer = window.setTimeout(check, Math.max(0, expiry - Date.now()));
+    window.addEventListener("pageshow", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pageshow", check);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [token, expire]);
+  return null;
+}
 
 export default function Home() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const [token, setToken] = useState<string | null | undefined>(undefined);
+  const active = useRef<string | null>(null);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    const controller = new AbortController();
-    const token = sessionStorage.getItem(sessionKey);
-    async function restore() {
-      try {
-        if (token) {
-          const user = await api<User>(
-            "/auth/me",
-            { signal: controller.signal },
-            token,
-          );
-          if (!controller.signal.aborted) setSession({ token, user });
-        }
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        if (error instanceof ApiError && error.status === 401) {
-          sessionStorage.removeItem(sessionKey);
-          setMessage("Your session expired. Please sign in again.");
-        } else {
-          setMessage(
-            error instanceof Error
-              ? error.message
-              : "Could not restore your session.",
-          );
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const saved = readSavedToken();
+      const expiry = saved ? expiresAt(saved) : null;
+      if (expiry !== null && expiry <= Date.now()) {
+        saveToken(null);
+        setNotice("Your session expired. Sign in to continue.");
+        setToken(null);
+        return;
       }
-    }
-    void restore();
-    return () => controller.abort();
+      active.current = saved;
+      setToken(saved);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  function signOut(token: string, expired = false) {
-    if (sessionStorage.getItem(sessionKey) !== token) return;
-    sessionStorage.removeItem(sessionKey);
-    setSession(null);
-    setMessage(expired ? "Your session expired. Please sign in again." : "");
-  }
+  const endSession = useCallback(
+    (expired = false) => {
+      if (!token || active.current !== token) return;
+      active.current = null;
+      saveToken(null);
+      setNotice(
+        expired
+          ? "Your session expired. Sign in to continue."
+          : "You’re signed out.",
+      );
+      setToken(null);
+    },
+    [token],
+  );
 
-  if (loading)
+  const expire = useCallback(() => endSession(true), [endSession]);
+
+  if (token === undefined)
     return (
-      <main className="loading" role="status">
-        Opening Taskboard…
+      <main className="launch" aria-busy="true">
+        <Brand />
+        <p role="status">Opening your workspace…</p>
       </main>
     );
-  if (session)
+  if (token)
     return (
-      <Board
-        key={session.token}
-        {...session}
-        signOut={(expired) => signOut(session.token, expired)}
-      />
+      <>
+        <SubscribeToExpiry token={token} expire={expire} />
+        <Board key={token} token={token} onSignOut={endSession} />
+      </>
     );
   return (
     <Auth
-      notice={message}
+      notice={notice}
       onLogin={(next) => {
-        sessionStorage.setItem(sessionKey, next.token);
-        setMessage("");
-        setSession(next);
+        active.current = next;
+        saveToken(next);
+        setNotice("");
+        setToken(next);
       }}
     />
   );
@@ -84,19 +140,23 @@ function Auth({
   onLogin,
 }: {
   notice: string;
-  onLogin: (session: Session) => void;
+  onLogin: (token: string) => void;
 }) {
   const [register, setRegister] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(notice);
+  const [error, setError] = useState("");
+  const inFlight = useRef(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inFlight.current) return;
     const fields = new FormData(event.currentTarget);
     const body = JSON.stringify({
-      email: fields.get("email"),
+      email: String(fields.get("email")).trim(),
       password: fields.get("password"),
     });
+    inFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -104,15 +164,17 @@ function Auth({
         await api<User>("/auth/register", { method: "POST", body });
         setRegister(false);
       }
-      const { access_token: token } = await api<{ access_token: string }>(
-        "/auth/login",
-        { method: "POST", body },
-      );
-      const user = await api<User>("/auth/me", {}, token);
-      onLogin({ token, user });
+      const result = await api<{ access_token: string }>("/auth/login", {
+        method: "POST",
+        body,
+      });
+      onLogin(result.access_token);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not sign in.");
+      setError(
+        error instanceof Error ? error.message : "Could not complete sign-in.",
+      );
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -125,10 +187,15 @@ function Auth({
           <h1>{register ? "Create your account" : "Welcome back"}</h1>
           <p className="muted">
             {register
-              ? "Set up your personal task board."
-              : "Sign in to open your task board."}
+              ? "Open a private workspace for your tasks."
+              : "Sign in to pick up where you left off."}
           </p>
-          <form onSubmit={submit} className="form">
+          {notice && !error && (
+            <p className="feedback" role="status">
+              {notice}
+            </p>
+          )}
+          <form onSubmit={submit} className="form" aria-busy={busy}>
             <label>
               Email address
               <input
@@ -139,11 +206,12 @@ function Auth({
                 required
               />
             </label>
-            <label>
-              Password
+            <label htmlFor="password">Password</label>
+            <div className="password-field">
               <input
+                id="password"
                 name="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 autoComplete={register ? "new-password" : "current-password"}
                 minLength={register ? 8 : undefined}
                 placeholder={
@@ -151,14 +219,29 @@ function Auth({
                 }
                 required
               />
-            </label>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((value) => !value)}
+              >
+                <Icon name={showPassword ? "eyeOff" : "eye"} />
+              </button>
+            </div>
             {error && (
               <p className="error" role="alert">
                 {error}
               </p>
             )}
-            <button className="primary" disabled={busy}>
-              {busy ? "Please wait…" : register ? "Create account" : "Sign in"}
+            <button className="primary auth-submit" disabled={busy}>
+              {busy
+                ? register
+                  ? "Creating account…"
+                  : "Signing in…"
+                : register
+                  ? "Create account"
+                  : "Sign in"}
+              <Icon name="arrow" />
             </button>
           </form>
           <p className="auth-switch">
@@ -168,6 +251,7 @@ function Auth({
               disabled={busy}
               onClick={() => {
                 setRegister(!register);
+                setShowPassword(false);
                 setError("");
               }}
             >
@@ -175,39 +259,55 @@ function Auth({
             </button>
           </p>
         </div>
+        <p className="auth-footer">
+          <Icon name="lock" /> Your tasks are private to your account.
+        </p>
       </section>
       <aside className="auth-art" aria-hidden="true">
         <div className="art-content">
           <h2>
-            Make big tasks
+            See what’s next.
             <br />
-            feel manageable.
+            Finish what matters.
           </h2>
           <div className="art-board">
-            {statuses.map((status, index) => (
-              <div className="art-column" key={status}>
-                <strong>
-                  <i className={`dot ${status}`} />
-                  {labels[status]}
-                </strong>
-                <div className="art-card">
-                  <span />
-                  {
-                    [
-                      "Draft project brief",
-                      "Build the board",
-                      "Set up workspace",
-                    ][index]
-                  }
-                </div>
-                {index === 0 && (
+            <div className="art-header">
+              <span>Project launch</span>
+              <span>
+                <i /> In progress
+              </span>
+            </div>
+            <div className="art-columns">
+              {["To do", "In progress", "Done"].map((step, index) => (
+                <div className="art-column" key={step}>
+                  <strong>
+                    <i
+                      className={`dot ${["TODO", "IN_PROGRESS", "DONE"][index]}`}
+                    />
+                    {step}
+                  </strong>
                   <div className="art-card">
-                    <span />
-                    Review next steps
+                    <span>
+                      {
+                        [
+                          "Write the launch brief",
+                          "Review the first draft",
+                          "Gather feedback",
+                        ][index]
+                      }
+                    </span>
+                    <i />
+                    <i />
                   </div>
-                )}
-              </div>
-            ))}
+                  {index !== 1 && (
+                    <div className="art-card art-card-small">
+                      <i />
+                      <i />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </aside>

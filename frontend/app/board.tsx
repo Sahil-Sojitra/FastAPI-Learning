@@ -1,346 +1,428 @@
 "use client";
 
 import {
+  memo,
+  useCallback,
+  useDeferredValue,
   useEffect,
+  useMemo,
   useRef,
   useState,
-  type FormEvent,
-  type ReactNode,
 } from "react";
-import {
-  api,
-  ApiError,
-  labels,
-  loadTasks,
-  statuses,
-  titleLength,
-  validTitle,
-  type Status,
-  type Task,
-  type User,
-} from "./api-client";
+import { labels, statuses, type Status, type Task } from "./api-client";
 import { Brand } from "./brand";
+import { AiDialog, DeleteDialog, TaskDialog } from "./dialogs";
+import { Icon } from "./icons";
+import { useBoard } from "./use-board";
 
-type DialogState = { type: "create" | "ai" } | { type: "delete"; task: Task };
+const statusIcon = {
+  TODO: "circle",
+  IN_PROGRESS: "progress",
+  DONE: "check",
+} as const;
+type Dialog = "create" | "ai" | { task: Task };
+type View = "board" | "list";
+const dateFormat = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+function taskDate(value: string | null) {
+  if (!value) return null;
+  const date = new Date(/Z$|[+-]\d\d:\d\d$/i.test(value) ? value : `${value}Z`);
+  return Number.isNaN(date.getTime()) ? null : dateFormat.format(date);
+}
 
 export function Board({
   token,
-  user,
-  signOut,
+  onSignOut,
 }: {
   token: string;
-  user: User;
-  signOut: (expired?: boolean) => void;
+  onSignOut: (expired?: boolean) => void;
 }) {
-  const [tasks, setTasks] = useState<Task[] | null>(null);
-  const [loadError, setLoadError] = useState("");
-  const [attempt, setAttempt] = useState(0);
+  const board = useBoard(token, onSignOut);
   const [search, setSearch] = useState("");
-  const [dialog, setDialog] = useState<DialogState | null>(null);
-  const [pending, setPending] = useState<number | null>(null);
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-  const signOutRef = useRef(signOut);
+  const query = useDeferredValue(search.trim().toLowerCase());
+  const [view, setView] = useState<View>("board");
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [feedback, setFeedback] = useState<{
+    text: string;
+    error?: boolean;
+  } | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const ready = board.firstPage && !board.loading;
 
   useEffect(() => {
-    signOutRef.current = signOut;
-  }, [signOut]);
-  useEffect(() => {
-    const controller = new AbortController();
-    loadTasks(token, controller.signal)
-      .then((data) => {
-        if (!controller.signal.aborted) setTasks(data);
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        if (error instanceof ApiError && error.status === 401)
-          signOutRef.current(true);
-        else
-          setLoadError(
-            error instanceof Error
-              ? error.message
-              : "Could not load your tasks.",
-          );
-      });
-    return () => controller.abort();
-  }, [token, attempt]);
-
-  async function request<T>(path: string, options: RequestInit) {
-    try {
-      return await api<T>(path, options, token);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) signOut(true);
-      throw error;
+    function shortcut(event: KeyboardEvent) {
+      const target = event.target;
+      if (
+        dialog ||
+        event.metaKey ||
+        event.ctrlKey ||
+        !event.altKey ||
+        event.shiftKey ||
+        event.repeat ||
+        (target instanceof HTMLElement &&
+          (target.isContentEditable ||
+            /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)))
+      )
+        return;
+      if (event.code === "Slash" && board.firstPage) {
+        event.preventDefault();
+        searchInput.current?.focus();
+      }
+      if (event.code === "KeyN" && ready) {
+        event.preventDefault();
+        setDialog("create");
+      }
     }
-  }
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, [dialog, board.firstPage, ready]);
 
-  async function addTask(title: string) {
-    const task = await request<Task>("/tasks", {
-      method: "POST",
-      body: JSON.stringify({ title: title.trim() }),
-    });
-    setTasks((current) => [task, ...(current ?? [])]);
-  }
-
-  async function changeStatus(task: Task, status: Status) {
-    setPending(task.id);
-    setError("");
-    setNotice("");
-    try {
-      const updated = await request<Task>(`/tasks/${task.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      });
-      setTasks(
-        (current) =>
-          current?.map((item) => (item.id === updated.id ? updated : item)) ??
-          [],
-      );
-      setNotice(`Task moved to ${labels[status].toLowerCase()}.`);
-    } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Could not update the task.",
-      );
-    } finally {
-      setPending(null);
+  const { counts, groups } = useMemo(() => {
+    const counts = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
+    const groups: Record<Status, Task[]> = {
+      TODO: [],
+      IN_PROGRESS: [],
+      DONE: [],
+    };
+    for (const task of board.tasks) {
+      counts[task.status]++;
+      if (!query || task.title.toLowerCase().includes(query))
+        groups[task.status].push(task);
     }
-  }
+    return { counts, groups };
+  }, [board.tasks, query]);
 
-  const ready = tasks !== null;
-  const visible = (tasks ?? []).filter((task) =>
-    task.title.toLowerCase().includes(search.trim().toLowerCase()),
+  const moveTask = board.move;
+  const move = useCallback(
+    async (task: Task, status: Status) => {
+      try {
+        await moveTask(task, status);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setFeedback({
+          text:
+            error instanceof Error ? error.message : "Could not move the task.",
+          error: true,
+        });
+      }
+    },
+    [moveTask],
   );
-  const counts = statuses.map(
-    (status) => (tasks ?? []).filter((task) => task.status === status).length,
-  );
-  const close = () => setDialog(null);
+  const openDelete = useCallback((task: Task) => setDialog({ task }), []);
+
+  const closeDialog = () => setDialog(null);
+  const progress = board.tasks.length
+    ? Math.round((counts.DONE / board.tasks.length) * 100)
+    : 0;
 
   return (
     <div className="workspace">
       <aside className="sidebar">
         <Brand />
-        <div className="side-nav">
-          <span className="side-label">Workspace</span>
-          <a href="#board" className="nav-current">
-            <span aria-hidden="true">▥</span> My board
+        <nav className="side-nav" aria-label="Workspace">
+          <p className="side-label">Workspace</p>
+          <a href="#tasks" aria-current="page">
+            <Icon name="board" /> My tasks
           </a>
-          <button onClick={() => setDialog({ type: "ai" })} disabled={!ready}>
-            <span aria-hidden="true">✧</span> AI breakdown
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => setDialog("ai")}
+          >
+            <Icon name="sparkle" /> AI breakdown
           </button>
-        </div>
+        </nav>
         <div className="account">
           <span className="avatar" aria-hidden="true">
-            {user.email[0].toUpperCase()}
+            {board.user?.email[0].toUpperCase() ?? "•"}
           </span>
           <div>
-            <strong title={user.email}>{user.email}</strong>
-            <button className="text-button" onClick={() => signOut()}>
-              Sign out
-            </button>
+            <strong title={board.user?.email}>
+              {board.user?.email ?? "Your account"}
+            </strong>
+            <span>Personal workspace</span>
           </div>
+          <button
+            className="icon-button signout"
+            aria-label="Sign out"
+            title="Sign out"
+            onClick={() => board.signOut()}
+          >
+            <Icon name="logout" />
+          </button>
         </div>
       </aside>
-      <main className="dashboard" id="board">
+      <main className="dashboard" id="tasks">
         <header className="board-header">
           <div>
-            <p className="eyebrow">Personal workspace</p>
-            <h1>My task board</h1>
+            <p className="eyebrow">
+              <Icon name="board" /> Personal workspace
+            </p>
+            <h1>My tasks</h1>
             <p className="muted">
-              Organize your work and track what’s moving forward.
+              Organize your work and see what needs your attention.
             </p>
           </div>
-          <button
-            className="primary"
-            onClick={() => setDialog({ type: "create" })}
-            disabled={!ready}
-          >
-            <span aria-hidden="true">＋</span> New task
-          </button>
+          <div className="header-actions">
+            <button
+              className="secondary"
+              disabled={!ready}
+              onClick={() => setDialog("ai")}
+            >
+              <Icon name="sparkle" /> AI breakdown
+            </button>
+            <button
+              className="primary"
+              disabled={!ready}
+              aria-keyshortcuts="Alt+N"
+              title="New task (Alt+N)"
+              onClick={() => setDialog("create")}
+            >
+              <Icon name="plus" /> New task
+            </button>
+          </div>
         </header>
-        <section className="stats" aria-label="Task totals">
-          {[
-            ["All tasks", tasks?.length],
-            ...statuses.map((status, index) => [labels[status], counts[index]]),
-          ].map(([label, count], index) => (
-            <div className="stat" key={label}>
-              <span>
-                <i className={`dot ${statuses[index - 1] ?? "total"}`} />
-                {label}
+        <section
+          className="stats"
+          aria-label={
+            board.hasMore ? "Progress for loaded tasks" : "Task progress"
+          }
+        >
+          {statuses.map((status) => (
+            <div className="stat" key={status}>
+              <span className={`status-icon ${status}`}>
+                <Icon name={statusIcon[status]} />
               </span>
-              <strong>{ready ? count : "—"}</strong>
+              <div>
+                <span>{labels[status]}</span>
+                <strong>{board.firstPage ? counts[status] : "—"}</strong>
+              </div>
             </div>
           ))}
-        </section>
-        <section className="ai-banner">
-          <span className="sparkle" aria-hidden="true">
-            ✧
-          </span>
-          <div>
-            <h2>Break down a task with AI</h2>
+          <div className="stat progress-stat">
+            <div className="progress-heading">
+              <span>{board.hasMore ? "Loaded progress" : "Completion"}</span>
+              <strong>{board.firstPage ? `${progress}%` : "—"}</strong>
+            </div>
+            <progress
+              max={100}
+              value={progress}
+              aria-label="Completion percentage"
+            />
             <p>
-              Turn a description into smaller steps you can add to your board.
+              {board.firstPage
+                ? `${counts.DONE} of ${board.tasks.length} tasks done`
+                : "Waiting for tasks"}
             </p>
           </div>
-          <button
-            className="secondary"
-            onClick={() => setDialog({ type: "ai" })}
-            disabled={!ready}
-          >
-            Try AI breakdown <span aria-hidden="true">↗</span>
-          </button>
         </section>
-        <div className="board-controls">
-          <h2>Tasks</h2>
-          <input
-            aria-label="Search tasks"
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search tasks…"
-            disabled={!ready}
-          />
-        </div>
-        {notice && (
-          <p className="notice" role="status">
-            {notice}
-          </p>
-        )}
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
-        {!ready &&
-          (loadError ? (
-            <div className="load-card">
-              <p className="error" role="alert">
-                {loadError}
-              </p>
+        <section className="task-area" aria-label="Tasks">
+          <div className="toolbar">
+            <div className="view-toggle" role="group" aria-label="Task layout">
               <button
-                className="secondary"
-                onClick={() => {
-                  setLoadError("");
-                  setAttempt(attempt + 1);
-                }}
+                type="button"
+                aria-pressed={view === "board"}
+                onClick={() => setView("board")}
               >
-                Retry
+                <Icon name="board" /> Board
+              </button>
+              <button
+                type="button"
+                aria-pressed={view === "list"}
+                onClick={() => setView("list")}
+              >
+                <Icon name="list" /> List
               </button>
             </div>
-          ) : (
-            <p className="load-card muted" role="status">
-              Loading your tasks…
-            </p>
-          ))}
-        {ready && (
-          <div className="columns">
-            {statuses.map((status) => {
-              const items = visible.filter((task) => task.status === status);
-              return (
+            <div className="toolbar-actions">
+              <div className="search-field">
+                <Icon name="search" />
+                <input
+                  ref={searchInput}
+                  type="search"
+                  aria-keyshortcuts="Alt+/"
+                  title="Search tasks (Alt+/)"
+                  aria-label={
+                    board.hasMore ? "Search loaded tasks" : "Search tasks"
+                  }
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={
+                    board.hasMore ? "Search loaded tasks" : "Search tasks"
+                  }
+                  disabled={!board.firstPage}
+                />
+              </div>
+              <button
+                className="icon-button refresh"
+                onClick={() => {
+                  setFeedback(null);
+                  void board.loadPage(true);
+                }}
+                disabled={!ready || board.pending.size > 0}
+                aria-label="Refresh tasks"
+                title="Refresh tasks"
+              >
+                <Icon name="refresh" />
+              </button>
+            </div>
+          </div>
+          {feedback && (
+            <div
+              className={
+                feedback.error
+                  ? "error board-feedback"
+                  : "feedback board-feedback"
+              }
+              role={feedback.error ? "alert" : "status"}
+            >
+              {feedback.text}
+              <button
+                className="icon-button"
+                aria-label="Dismiss message"
+                onClick={() => setFeedback(null)}
+              >
+                <Icon name="close" />
+              </button>
+            </div>
+          )}
+          {board.loadError && (
+            <div className="error board-feedback" role="alert">
+              <span>{board.loadError}</span>
+              {!board.firstPage && (
+                <button
+                  className="secondary"
+                  onClick={() => void board.loadPage(true)}
+                >
+                  Try again
+                </button>
+              )}
+            </div>
+          )}
+          {!board.firstPage && board.loading && (
+            <div className="columns" role="status" aria-label="Loading tasks">
+              {statuses.map((status) => (
+                <div className="column" key={status}>
+                  <span className="skeleton skeleton-heading" />
+                  <span className="skeleton skeleton-card" />
+                  <span className="skeleton skeleton-card" />
+                </div>
+              ))}
+            </div>
+          )}
+          {board.firstPage && (
+            <div
+              className={view === "board" ? "columns" : "columns list-view"}
+              aria-busy={board.loading || search.trim().toLowerCase() !== query}
+            >
+              {statuses.map((status) => (
                 <section
                   className="column"
                   key={status}
                   aria-label={labels[status]}
                 >
-                  <header>
-                    <h3>
+                  <header className="column-header">
+                    <h2>
                       <i className={`dot ${status}`} />
                       {labels[status]}
-                    </h3>
-                    <span>{items.length}</span>
+                    </h2>
+                    <span className="count">{groups[status].length}</span>
                   </header>
-                  {items.length === 0 && (
-                    <p className="empty">
-                      {search.trim() ? "No matching tasks" : "No tasks yet"}
-                    </p>
-                  )}
-                  {items.map((task) => (
-                    <article className="task-card" key={task.id}>
-                      <h4>{task.title}</h4>
-                      <div className="task-actions">
-                        <select
-                          aria-label={`Status for ${task.title}`}
-                          value={task.status}
-                          disabled={pending !== null}
-                          onChange={(event) =>
-                            void changeStatus(
-                              task,
-                              event.target.value as Status,
-                            )
-                          }
-                        >
-                          {statuses.map((option) => (
-                            <option key={option} value={option}>
-                              {labels[option]}
-                            </option>
-                          ))}
-                        </select>
+                  {groups[status].length === 0 ? (
+                    <div className="empty">
+                      <Icon name={statusIcon[status]} />
+                      <p>
+                        {query
+                          ? "No matching tasks"
+                          : `No ${status === "DONE" ? "completed" : status === "TODO" ? "pending" : "active"} tasks`}
+                      </p>
+                      {!query && status === "TODO" && (
                         <button
-                          className="delete-link"
-                          aria-label={`Delete ${task.title}`}
-                          disabled={pending !== null}
-                          onClick={() => setDialog({ type: "delete", task })}
+                          className="text-button"
+                          disabled={!ready}
+                          onClick={() => setDialog("create")}
                         >
-                          Delete
+                          <Icon name="plus" /> Add a task
                         </button>
-                      </div>
-                    </article>
-                  ))}
+                      )}
+                    </div>
+                  ) : (
+                    groups[status].map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        saving={board.pending.has(task.id)}
+                        loading={board.loading}
+                        onMove={move}
+                        onDelete={openDelete}
+                      />
+                    ))
+                  )}
                 </section>
-              );
-            })}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+          {board.firstPage && board.hasMore && (
+            <div className="load-more">
+              <p>{board.tasks.length} tasks loaded</p>
+              <button
+                className="secondary"
+                disabled={board.loading}
+                onClick={() => void board.loadPage()}
+              >
+                {board.loading ? "Loading…" : "Load more tasks"}
+                <Icon name="chevron" />
+              </button>
+            </div>
+          )}
+        </section>
       </main>
-      {dialog?.type === "create" && (
+      {dialog === "create" && (
         <TaskDialog
-          close={close}
+          close={closeDialog}
           add={async (title) => {
-            await addTask(title);
+            await board.add(title);
             setSearch("");
-            setNotice("Task added to To do.");
-            setError("");
-            close();
+            setFeedback({ text: "Task added to To do." });
+            closeDialog();
           }}
         />
       )}
-      {dialog?.type === "ai" && (
+      {dialog === "ai" && (
         <AiDialog
-          close={close}
-          generate={async (description) => {
-            const result = await request<{ suggestions: string[] }>(
+          close={closeDialog}
+          generate={async (description, signal) => {
+            const result = await board.request<{ suggestions: string[] }>(
               "/ai/task-breakdown",
-              { method: "POST", body: JSON.stringify({ description }) },
+              { method: "POST", body: JSON.stringify({ description }), signal },
             );
             return result.suggestions;
           }}
           add={async (title) => {
-            await addTask(title);
+            await board.add(title);
             setSearch("");
-            setError("");
           }}
           done={(count) => {
-            setNotice(
-              `${count} AI ${count === 1 ? "task" : "tasks"} added to To do.`,
-            );
-            close();
+            setFeedback({
+              text: `${count} ${count === 1 ? "task" : "tasks"} added to To do.`,
+            });
+            closeDialog();
           }}
         />
       )}
-      {dialog?.type === "delete" && (
+      {dialog && typeof dialog === "object" && (
         <DeleteDialog
-          close={close}
+          close={closeDialog}
           task={dialog.task}
           remove={async () => {
-            await request<void>(`/tasks/${dialog.task.id}`, {
-              method: "DELETE",
-            });
-            setTasks(
-              (current) =>
-                current?.filter((task) => task.id !== dialog.task.id) ?? [],
-            );
-            setNotice("Task deleted.");
-            setError("");
-            close();
+            await board.remove(dialog.task);
+            setFeedback({ text: "Task deleted." });
+            closeDialog();
           }}
         />
       )}
@@ -348,305 +430,59 @@ export function Board({
   );
 }
 
-function Modal({
-  title,
-  close,
-  busy,
-  children,
-}: {
-  title: string;
-  close: () => void;
-  busy: boolean;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const modal = ref.current;
-    modal?.showModal();
-    return () => modal?.close();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      aria-labelledby="dialog-title"
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!busy) close();
-      }}
-    >
-      <header className="dialog-header">
-        <h2 id="dialog-title">{title}</h2>
-        <button
-          className="close"
-          aria-label="Close dialog"
-          disabled={busy}
-          onClick={close}
-        >
-          ×
-        </button>
-      </header>
-      {children}
-    </dialog>
-  );
-}
-
-function TaskDialog({
-  close,
-  add,
-}: {
-  close: () => void;
-  add: (title: string) => Promise<void>;
-}) {
-  const [title, setTitle] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!validTitle(title)) return;
-    setBusy(true);
-    setError("");
-    try {
-      await add(title);
-    } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Could not add the task.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal title="New task" close={close} busy={busy}>
-      <form className="form" onSubmit={submit}>
-        <label>
-          Task title
-          <input
-            required
-            autoFocus
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="What needs to get done?"
-          />
-        </label>
-        <p className="hint">Use 3 to 100 characters.</p>
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
-        <button className="primary" disabled={busy || !validTitle(title)}>
-          {busy ? "Adding…" : "Add task"}
-        </button>
-      </form>
-    </Modal>
-  );
-}
-
-function DeleteDialog({
-  close,
+const TaskCard = memo(function TaskCard({
   task,
-  remove,
+  saving,
+  loading,
+  onMove,
+  onDelete,
 }: {
-  close: () => void;
   task: Task;
-  remove: () => Promise<void>;
+  saving: boolean;
+  loading: boolean;
+  onMove: (task: Task, status: Status) => Promise<void>;
+  onDelete: (task: Task) => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function confirm() {
-    setBusy(true);
-    setError("");
-    try {
-      await remove();
-    } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Could not delete the task.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
+  const date = taskDate(task.created_at);
   return (
-    <Modal title="Delete task?" close={close} busy={busy}>
-      <p className="muted">“{task.title}” will be removed from your board.</p>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="dialog-actions">
-        <button className="secondary" autoFocus disabled={busy} onClick={close}>
-          Cancel
-        </button>
+    <article className="task-card">
+      <div className="task-heading">
+        <h3>{task.title}</h3>
         <button
-          className="danger"
-          disabled={busy}
-          onClick={() => void confirm()}
+          className="icon-button delete-button"
+          aria-label={`Delete ${task.title}`}
+          title="Delete task"
+          disabled={saving || loading}
+          onClick={() => onDelete(task)}
         >
-          {busy ? "Deleting…" : "Delete task"}
+          <Icon name="trash" />
         </button>
       </div>
-    </Modal>
-  );
-}
-
-type Suggestion = { id: number; title: string; selected: boolean };
-
-function AiDialog({
-  close,
-  generate,
-  add,
-  done,
-}: {
-  close: () => void;
-  generate: (description: string) => Promise<string[]>;
-  add: (title: string) => Promise<void>;
-  done: (count: number) => void;
-}) {
-  const [description, setDescription] = useState("");
-  const [drafts, setDrafts] = useState<Suggestion[]>([]);
-  const [busy, setBusy] = useState<"generate" | "add" | null>(null);
-  const [error, setError] = useState("");
-  const selected = drafts.filter((draft) => draft.selected);
-  const length = titleLength(description);
-  const saved = useRef(0);
-
-  async function suggest(event: FormEvent) {
-    event.preventDefault();
-    if (length < 3 || length > 2000) return;
-    setBusy("generate");
-    setError("");
-    try {
-      const suggestions = await generate(description.trim());
-      setDrafts(
-        suggestions.map((title, id) => ({ id, title, selected: true })),
-      );
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Could not generate suggestions.",
-      );
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function save() {
-    if (!selected.length || !selected.every((draft) => validTitle(draft.title)))
-      return;
-    setBusy("add");
-    setError("");
-    let added = 0;
-    try {
-      for (const draft of selected) {
-        await add(draft.title);
-        added++;
-        saved.current++;
-        setDrafts((current) => current.filter((item) => item.id !== draft.id));
-      }
-      done(saved.current);
-    } catch (error) {
-      const reason =
-        error instanceof Error ? error.message : "Could not add this task.";
-      setError(
-        added ? `Added ${added} before the request failed. ${reason}` : reason,
-      );
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  function revise(id: number, change: Partial<Suggestion>) {
-    setDrafts((current) =>
-      current.map((draft) =>
-        draft.id === id ? { ...draft, ...change } : draft,
-      ),
-    );
-  }
-
-  return (
-    <Modal
-      title="AI task breakdown"
-      close={() => (saved.current ? done(saved.current) : close())}
-      busy={busy !== null}
-    >
-      <form className="form" onSubmit={suggest}>
-        <label>
-          Describe the task
-          <textarea
-            autoFocus
-            rows={4}
-            value={description}
-            disabled={busy !== null}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="For example, plan and launch a project website"
-          />
-        </label>
-        <p className="hint">{length} / 2000 characters</p>
-        <button
-          className="secondary"
-          disabled={busy !== null || length < 3 || length > 2000}
-        >
-          {busy === "generate"
-            ? "Generating…"
-            : drafts.length
-              ? "Regenerate suggestions"
-              : "Generate suggestions"}
-        </button>
-      </form>
-      {drafts.length > 0 && (
-        <section className="suggestions" aria-label="Suggested tasks">
-          <h3>Review suggestions</h3>
-          <p className="hint">
-            Edit titles to 3–100 characters, then select the tasks to add.
-          </p>
-          {drafts.map((draft) => (
-            <div className="suggestion" key={draft.id}>
-              <input
-                type="checkbox"
-                aria-label={`Include suggestion ${draft.id + 1}`}
-                checked={draft.selected}
-                disabled={busy !== null}
-                onChange={(event) =>
-                  revise(draft.id, { selected: event.target.checked })
-                }
-              />
-              <input
-                aria-label={`Suggestion ${draft.id + 1}`}
-                aria-invalid={!validTitle(draft.title)}
-                value={draft.title}
-                disabled={busy !== null}
-                onChange={(event) =>
-                  revise(draft.id, { title: event.target.value })
-                }
-              />
-            </div>
-          ))}
-          <button
-            className="primary"
-            disabled={
-              busy !== null ||
-              !selected.length ||
-              !selected.every((draft) => validTitle(draft.title))
+      <div className="task-meta">
+        <label className={`status-select ${task.status}`}>
+          <i className={`dot ${task.status}`} />
+          <select
+            aria-label={`Status for ${task.title}`}
+            value={task.status}
+            disabled={saving || loading}
+            onChange={(event) =>
+              void onMove(task, event.target.value as Status)
             }
-            onClick={() => void save()}
           >
-            {busy === "add"
-              ? "Adding tasks…"
-              : `Add ${selected.length} selected`}
-          </button>
-        </section>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-    </Modal>
+            {statuses.map((status) => (
+              <option key={status} value={status}>
+                {labels[status]}
+              </option>
+            ))}
+          </select>
+          <Icon name="chevron" />
+        </label>
+        {saving ? (
+          <span role="status">Saving…</span>
+        ) : (
+          date && <span>{date}</span>
+        )}
+      </div>
+    </article>
   );
-}
+});
