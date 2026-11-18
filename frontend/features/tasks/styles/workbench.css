@@ -1,0 +1,268 @@
+.task-area-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  min-height: 30px;
+}
+.task-area-heading h2 {
+  font-size: 1.1rem;
+}
+.stat-filter {
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.stat-filter:hover:not(:disabled) {
+  background: var(--raised);
+  border-color: var(--line-strong);
+}
+.stat-filter[aria-pressed="true"] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+}
+.columns.filtered-view {
+  grid-template-columns: 1fr;
+}
+.filtered-view:not(.list-view) .column-body:has(.task-card) {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 225px), 1fr));
+}
+.ticket-open {
+  text-align: left;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+.ticket-open:hover {
+  color: var(--accent);
+}
+.ticket-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--quiet);
+  font-size: 0.68rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.ticket-key svg {
+  width: 12px;
+  height: 12px;
+}
+.ticket-detail h3 {
+  margin-bottom: 14px;
+  font-size: 1.6rem;
+  overflow-wrap: anywhere;
+}
+.ticket-detail h4 {
+  margin: 0 0 7px;
+  font-size: 0.9rem;
+}
+.ticket-detail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 21px;
+}
+.ticket-detail dl div {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--raised);
+}
+.ticket-detail dt {
+  color: var(--muted);
+  font-size: 0.73rem;
+}
+.ticket-detail dd {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0 0;
+  font-weight: 750;
+}
+.ticket-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.ticket-ai {
+  margin: 21px 0 12px;
+  padding: 14px;
+  border: 1px solid var(--accent-line);
+  background: linear-gradient(118deg, var(--accent-wash), var(--surface));
+  border-radius: 12px;
+}
+.ticket-ai p {
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.ticket-delete {
+  color: var(--danger);
+}
+.command-results {
+  display: grid;
+  gap: 4px;
+  margin: 9px 0;
+  max-height: min(47svh, 390px);
+  overflow: auto;
+}
+.command-result {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 7px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.command-result[aria-selected="true"] {
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+}
+.command-result > span {
+  min-width: 0;
+  flex: 1;
+}
+.command-result strong {
+  display: block;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.command-result small {
+  display: block;
+  color: var(--muted);
+}
+.result-arrow {
+  width: 14px;
+}
+.command-empty {
+  padding: 12px 4px;
+  color: var(--muted);
+}
+.command-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.ticket-grip {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 27px;
+  border-radius: 6px;
+  color: var(--quiet);
+  pointer-events: none;
+}
+.ticket-grip svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.3;
+}
+@media (any-pointer: fine) {
+  .task-card[draggable="true"] {
+    cursor: grab;
+  }
+  .task-card[draggable="true"]:active {
+    cursor: grabbing;
+  }
+  .task-card[draggable="true"]:hover .ticket-grip {
+    color: var(--accent);
+  }
+}
+.task-card[data-dragging] {
+  opacity: 0.5;
+}
+.column[data-drop-active] {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--accent-wash);
+}
+.ticket-actions .button[aria-pressed="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .ticket-grip {
+    display: none;
+  }
+}
+
+.task-heading-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.result-count {
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.71rem;
+  font-weight: 730;
+  font-variant-numeric: tabular-nums;
+}
+.active-status-filter {
+  min-height: 28px;
+  padding: 3px 7px;
+  background: var(--surface);
+  font-size: 0.72rem;
+}
+.active-status-filter svg {
+  width: 13px;
+  height: 13px;
+  color: var(--quiet);
+}
+.task-results-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+.task-results-empty .empty-icon {
+  flex: none;
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+}
+.task-results-empty p {
+  font-size: 0.88rem;
+  font-weight: 780;
+}
+.task-results-empty div > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.task-results-empty > .button {
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+@media (max-width: 570px) {
+  .task-results-empty {
+    flex-wrap: wrap;
+  }
+}
