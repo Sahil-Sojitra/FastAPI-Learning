@@ -1,0 +1,44 @@
+.status-marker,
+[data-status="TODO"] {
+  --state-ink: var(--todo);
+  --state-bg: var(--todo-wash);
+}
+[data-status="IN_PROGRESS"] {
+  --state-ink: var(--doing);
+  --state-bg: var(--doing-wash);
+}
+[data-status="DONE"] {
+  --state-ink: var(--done);
+  --state-bg: var(--done-wash);
+}
+.status-marker {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--state-ink);
+}
+.status-marker svg {
+  width: 15px;
+  height: 15px;
+}
+.status-trigger {
+  --button-bg: var(--state-bg);
+  --button-fg: var(--state-ink);
+  --button-line: transparent;
+  --button-hover: color-mix(in srgb, var(--state-bg), var(--state-ink) 12%);
+  min-height: 29px;
+  max-width: 100%;
+  padding: 3px 6px;
+  gap: 5px;
+  border-radius: 7px;
+  font-size: 0.71rem;
+  white-space: nowrap;
+}
+.status-trigger svg {
+  width: 13px;
+  height: 13px;
+}
+.status-trigger .status-caret {
+  width: 12px;
+  opacity: 0.83;
+}
