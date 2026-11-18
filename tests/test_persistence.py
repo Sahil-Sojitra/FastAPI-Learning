@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.database import Base
-from app.models import Task
+from app.models import Task, User
 from app.task_service import (
     TaskNotFoundError,
     create_task,
@@ -32,10 +32,16 @@ class TestPersistence(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_persistence_across_independent_sessions(self):
-        # --- App Lifetime 1: Create a task and commit ---
+        # --- App Lifetime 1: Create a user & task and commit ---
         engine1 = create_engine(self.db_url, connect_args={"check_same_thread": False})
         with Session(engine1) as session1:
-            task = create_task(session1, title="Verify persistence task")
+            user = User(email="persist@example.com", password_hash="dummy-hash")
+            session1.add(user)
+            session1.commit()
+            session1.refresh(user)
+            user_id = user.id
+
+            task = create_task(session1, title="Verify persistence task", owner_id=user_id)
             task_id = task.id
             self.assertIsNotNone(task_id)
             self.assertEqual(task.status, "TODO")
@@ -44,7 +50,7 @@ class TestPersistence(unittest.TestCase):
         # --- App Lifetime 2 (Simulating server restart): Read back task ---
         engine2 = create_engine(self.db_url, connect_args={"check_same_thread": False})
         with Session(engine2) as session2:
-            fetched_task = find_task(session2, task_id)
+            fetched_task = find_task(session2, task_id, owner_id=user_id)
             self.assertEqual(fetched_task.id, task_id)
             self.assertEqual(fetched_task.title, "Verify persistence task")
             self.assertEqual(fetched_task.status, "TODO")
@@ -56,11 +62,11 @@ class TestPersistence(unittest.TestCase):
         # --- App Lifetime 3 (Second restart): Confirm status survived reload ---
         engine3 = create_engine(self.db_url, connect_args={"check_same_thread": False})
         with Session(engine3) as session3:
-            fetched_task_again = find_task(session3, task_id)
+            fetched_task_again = find_task(session3, task_id, owner_id=user_id)
             self.assertEqual(fetched_task_again.status, "DONE")
 
             # Verify it shows up in get_tasks
-            all_tasks = get_tasks(session3)
+            all_tasks = get_tasks(session3, owner_id=user_id)
             self.assertTrue(any(t.id == task_id for t in all_tasks))
 
             # Delete the task
@@ -71,7 +77,7 @@ class TestPersistence(unittest.TestCase):
         engine4 = create_engine(self.db_url, connect_args={"check_same_thread": False})
         with Session(engine4) as session4:
             with self.assertRaises(TaskNotFoundError):
-                find_task(session4, task_id)
+                find_task(session4, task_id, owner_id=user_id)
         engine4.dispose()
 
 

@@ -1,4 +1,4 @@
-from sqlalchemy import String, DateTime
+from sqlalchemy import String, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
 from app.database import Base
@@ -15,7 +15,12 @@ class Task(Base):
     created_at: Mapped[datetime | None] = mapped_column(
     DateTime(),
     nullable=True,
-)
+    )
+    owner_id: Mapped[int | None] = mapped_column(
+    ForeignKey("users.id", name="fk_tasks_owner_id_users"),
+    nullable=True,
+    index=True,
+    )
 
 class User(Base):
     __tablename__ = "users"
