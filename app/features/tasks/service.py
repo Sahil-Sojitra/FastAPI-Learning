@@ -1,20 +1,18 @@
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.models import Task
-from sqlalchemy.exc import SQLAlchemyError
-from datetime import datetime, timezone
 
-class TaskNotFoundError(Exception):
-    pass
-
+from app.features.tasks.exceptions import TaskNotFoundError
+from app.features.tasks.models import Task
 
 
 def _commit(db: Session) -> None:
     try:
         db.commit()
-    except SQLAlchemyError:
+    except Exception:
         db.rollback()
         raise
+
 
 def get_tasks(
     db: Session,
@@ -69,7 +67,6 @@ def create_task(
     db.add(task)
     _commit(db)
     db.refresh(task)
-
     return task
 
 

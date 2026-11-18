@@ -4,9 +4,10 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.database import Base
-from app.models import Task, User
-from app.task_service import (
+from app.db.base import Base
+from app.features.auth.models import User
+from app.features.tasks.models import Task
+from app.features.tasks.service import (
     TaskNotFoundError,
     create_task,
     delete_task,
