@@ -21,7 +21,15 @@ from app.features.ai.exceptions import (
 from app.features.ai.schemas import TaskBreakdownResponse
 
 SYSTEM_INSTRUCTION = (
-    "Break the supplied task into actionable steps and return the required schema."
+    "Break the supplied task into actionable steps and return the required schema.\n"
+    "For a clear goal, give concrete steps in execution order. Review the existing "
+    "behavior where relevant, then explain what to change and how to test it.\n"
+    "If missing information would change the plan, ask to clarify that specific detail. "
+    "For vague goals, gather evidence and prioritize findings before proposing fixes.\n"
+    "Turn every explicit constraint into a direct check using the user's values. For "
+    "example, if asked for recipes for four people in under 30 minutes, check that each "
+    "recipe serves four and that its total prep and cooking time is under 30 minutes.\n"
+    "Do not invent targets, defaults, or requirements."
 )
 GENERATION_TIMEOUT_SECONDS = 30.0
 
