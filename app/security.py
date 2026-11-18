@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import jwt
 from pwdlib import PasswordHash
-from app.settings import ACCESS_TOKEN_EXPIRE_MINUTES, JWT_ALGORITHM, JWT_SECRET
+from app.settings import settings
 
 password_hasher = PasswordHash.recommended()
 
@@ -23,11 +23,11 @@ def create_access_token(user_id: int) -> str:
     payload = {
         "sub": str(user_id),
         "iat": now,
-        "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     }
 
     return jwt.encode(
         payload,
-        JWT_SECRET,
-        algorithm=JWT_ALGORITHM,
+        settings.JWT_SECRET.get_secret_value(),
+        algorithm=settings.JWT_ALGORITHM,
     )

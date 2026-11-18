@@ -1,14 +1,24 @@
 from time import perf_counter
 from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.auth_routes import router as auth_router
 from app.database import Base, engine, get_db
 import app.models  # Registers Task model with Base
+from app.settings import settings
 from app.task_routes import router as tasks_router
 
 
 app = FastAPI(title="Task Board API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
 @app.middleware("http")

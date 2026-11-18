@@ -1,22 +1,42 @@
 from collections.abc import Iterator
-from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session
+from sqlite3 import Connection as SQLiteConnection
 
-# Anchor database to project root (parent directory of app/)
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "task_board.db"
-DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
+from app.settings import DB_PATH, DATABASE_URL, settings
+
+BASE_DIR = settings.PROJECT_ROOT if hasattr(settings, "PROJECT_ROOT") else DB_PATH.parent
 
 
 class Base(DeclarativeBase):
     pass
 
 
+connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+
 engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    settings.DATABASE_URL,
+    connect_args=connect_args,
 )
+
+
+@event.listens_for(Engine, "connect")
+def enable_sqlite_foreign_keys(connection, connection_record):
+    if not isinstance(connection, SQLiteConnection):
+        return
+
+    previous_autocommit = connection.autocommit
+    connection.autocommit = True
+
+    try:
+        cursor = connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
+    finally:
+        connection.autocommit = previous_autocommit
 
 
 def get_db() -> Iterator[Session]:
