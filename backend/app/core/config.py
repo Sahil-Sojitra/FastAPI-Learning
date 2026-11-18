@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 ENV_FILE = PROJECT_ROOT / ".env"
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     NEON_DB: str | None = None
     GEMINI_API_KEY: SecretStr | None = None
     GEMINI_MODEL: str = "gemini-3.5-flash-lite"
-    CORS_ORIGINS: list[str] = Field(default_factory=list)
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     @field_validator("DATABASE_URL")
     @classmethod
@@ -86,20 +86,22 @@ class Settings(BaseSettings):
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
-    def parse_cors_origins(cls, v: Any) -> list[str]:
-        if isinstance(v, str):
-            stripped = v.strip()
-            if not stripped:
-                return []
-            if stripped.startswith("[") and stripped.endswith("]"):
-                try:
-                    parsed = json.loads(stripped)
-                    if isinstance(parsed, list):
-                        return [str(item).strip() for item in parsed if str(item).strip()]
-                except json.JSONDecodeError:
-                    pass
-            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
-        return v
+    def parse_cors_origins(cls, v: Any) -> Any:
+        if not isinstance(v, str):
+            return v
+
+        value = v.strip()
+        if value.startswith("["):
+            try:
+                origins = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError("CORS_ORIGINS contains a malformed JSON array") from exc
+            if not all(isinstance(origin, str) for origin in origins):
+                raise ValueError("CORS_ORIGINS entries must be strings")
+        else:
+            origins = value.split(",")
+
+        return [origin for origin in map(str.strip, origins) if origin]
 
 
 settings = Settings()

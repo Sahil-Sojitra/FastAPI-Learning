@@ -169,6 +169,32 @@ def test_cors_origins_parsing(monkeypatch):
     assert s4.CORS_ORIGINS == ["http://localhost:3000"]
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ('["https://taskboard.example.com"]', ["https://taskboard.example.com"]),
+        ("https://taskboard.example.com", ["https://taskboard.example.com"]),
+        (
+            "https://taskboard.example.com, http://localhost:3000",
+            ["https://taskboard.example.com", "http://localhost:3000"],
+        ),
+        ("[]", []),
+        ("", []),
+    ],
+)
+def test_cors_origins_from_environment(monkeypatch, value, expected):
+    monkeypatch.setenv("CORS_ORIGINS", value)
+
+    assert Settings(JWT_SECRET=VALID_SECRET, _env_file=None).CORS_ORIGINS == expected
+
+
+def test_malformed_cors_origins_json_from_environment(monkeypatch):
+    monkeypatch.setenv("CORS_ORIGINS", "[https://taskboard.example.com]")
+
+    with pytest.raises(ValidationError, match="malformed JSON array"):
+        Settings(JWT_SECRET=VALID_SECRET, _env_file=None)
+
+
 def test_restricted_env_and_algorithm(monkeypatch):
     monkeypatch.delenv("JWT_SECRET", raising=False)
 
