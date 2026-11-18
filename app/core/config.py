@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from typing import Any, Literal
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -22,7 +22,28 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: Literal["HS256"] = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=15, ge=1, le=1440)
     DATABASE_URL: str = DEFAULT_DATABASE_URL
+    NEON_DB: str | None = None
     CORS_ORIGINS: list[str] = Field(default_factory=list)
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        if v.startswith("postgresql://"):
+            return "postgresql+psycopg://" + v[len("postgresql://"):]
+        if v.startswith("postgres://"):
+            return "postgresql+psycopg://" + v[len("postgres://"):]
+        return v
+
+    @model_validator(mode="after")
+    def resolve_neon_db_fallback(self) -> "Settings":
+        if self.DATABASE_URL == DEFAULT_DATABASE_URL and self.NEON_DB:
+            url = self.NEON_DB
+            if url.startswith("postgresql://"):
+                url = "postgresql+psycopg://" + url[len("postgresql://"):]
+            elif url.startswith("postgres://"):
+                url = "postgresql+psycopg://" + url[len("postgres://"):]
+            self.DATABASE_URL = url
+        return self
 
     @classmethod
     def settings_customise_sources(

@@ -97,6 +97,46 @@ def test_default_database_location(monkeypatch):
     assert DEFAULT_DB_PATH.resolve() == expected_path
 
 
+def test_database_url_normalization(monkeypatch):
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+
+    # Standard postgresql:// scheme is converted to postgresql+psycopg://
+    s1 = Settings(
+        JWT_SECRET=VALID_SECRET,
+        DATABASE_URL="postgresql://user:pass@ep-sample.neon.tech/neondb?sslmode=require&channel_binding=require",
+        _env_file=None,
+    )
+    assert s1.DATABASE_URL == "postgresql+psycopg://user:pass@ep-sample.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+    # postgres:// scheme is converted to postgresql+psycopg://
+    s2 = Settings(
+        JWT_SECRET=VALID_SECRET,
+        DATABASE_URL="postgres://user:pass@localhost:5432/mydb",
+        _env_file=None,
+    )
+    assert s2.DATABASE_URL == "postgresql+psycopg://user:pass@localhost:5432/mydb"
+
+    # SQLite URLs remain untouched
+    s3 = Settings(
+        JWT_SECRET=VALID_SECRET,
+        DATABASE_URL="sqlite:///custom.db",
+        _env_file=None,
+    )
+    assert s3.DATABASE_URL == "sqlite:///custom.db"
+
+
+def test_neon_db_fallback_when_database_url_is_default(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+
+    s = Settings(
+        JWT_SECRET=VALID_SECRET,
+        NEON_DB="postgresql://user:pass@ep-test.neon.tech/neondb?sslmode=require",
+        _env_file=None,
+    )
+    assert s.DATABASE_URL == "postgresql+psycopg://user:pass@ep-test.neon.tech/neondb?sslmode=require"
+
+
 def test_cors_origins_parsing(monkeypatch):
     monkeypatch.delenv("JWT_SECRET", raising=False)
 
