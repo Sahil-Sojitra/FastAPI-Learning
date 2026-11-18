@@ -30,3 +30,25 @@ def client(tmp_path):
     finally:
         app.dependency_overrides.pop(get_db, None)
         test_engine.dispose()
+
+
+@pytest.fixture
+def authenticated_client(client):
+    credentials = {
+        "email": "task-owner@example.com",
+        "password": "Learning-FastAPI-2026!",
+    }
+
+    registered = client.post("/auth/register", json=credentials)
+    assert registered.status_code == 201
+
+    login = client.post("/auth/login", json=credentials)
+    assert login.status_code == 200
+
+    client.headers["Authorization"] = (
+        f"Bearer {login.json()['access_token']}"
+    )
+
+    yield client
+
+    client.headers.pop("Authorization", None)

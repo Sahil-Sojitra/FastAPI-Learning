@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth_dependencies import get_current_user
+from app.models import User
+from app.schemas import UserRead
+
 from app.auth_service import (
     EmailAlreadyRegisteredError,
     register_user,
@@ -48,3 +52,8 @@ def login(
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     return TokenRead(access_token=create_access_token(user.id))
+
+
+@router.get("/me", response_model=UserRead)
+def get_me(user: User = Depends(get_current_user)):
+    return user

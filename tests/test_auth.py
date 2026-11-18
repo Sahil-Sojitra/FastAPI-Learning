@@ -1,6 +1,7 @@
 import jwt
 
 from app.settings import JWT_ALGORITHM, JWT_SECRET
+from datetime import datetime, timedelta, timezone
 
 def test_register_user(client):
     payload = {
@@ -65,3 +66,54 @@ def test_login(client):
     )
     assert unknown_user.status_code == 401
     assert unknown_user.json() == wrong_password.json()
+
+
+def test_get_current_user(client):
+    credentials = {
+        "email": "sahil@example.com",
+        "password": "Learning-FastAPI-2026!",
+    }
+
+    registered = client.post("/auth/register", json=credentials)
+    assert registered.status_code == 201
+
+    login = client.post("/auth/login", json=credentials)
+    assert login.status_code == 200
+
+    token = login.json()["access_token"]
+
+    # Valid token returns the registered user.
+    response = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    assert response.json() == registered.json()
+
+    # Missing token.
+    assert client.get("/auth/me").status_code == 401
+
+    # Invalid token.
+    invalid = client.get(
+        "/auth/me",
+        headers={"Authorization": "Bearer invalid-token"},
+    )
+    assert invalid.status_code == 401
+
+    # Expired token, signed with the correct key.
+    now = datetime.now(timezone.utc)
+    expired_token = jwt.encode(
+        {
+            "sub": str(registered.json()["id"]),
+            "iat": now - timedelta(minutes=20),
+            "exp": now - timedelta(minutes=5),
+        },
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+    expired = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {expired_token}"},
+    )
+    assert expired.status_code == 401
