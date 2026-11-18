@@ -16,33 +16,53 @@ def _commit(db: Session) -> None:
         db.rollback()
         raise
 
-
-def find_task(db: Session, task_id: int) -> Task:
-    task = db.get(Task, task_id)
-    if task is None:
-        raise TaskNotFoundError("Task not found")
-    return task
-
-
 def get_tasks(
     db: Session,
+    owner_id: int,
     status: str | None = None,
     limit: int = 10,
     offset: int = 0,
 ) -> list[Task]:
-    stmt = select(Task).order_by(Task.id)
+    stmt = (
+        select(Task)
+        .where(Task.owner_id == owner_id)
+        .order_by(Task.id)
+    )
 
     if status is not None:
         stmt = stmt.where(Task.status == status)
 
     stmt = stmt.offset(offset).limit(limit)
-    return list(db.scalars(stmt).all())
+    return list(db.scalars(stmt))
 
 
-def create_task(db: Session, title: str) -> Task:
+def find_task(
+    db: Session,
+    task_id: int,
+    owner_id: int,
+) -> Task:
+    task = db.scalar(
+        select(Task).where(
+            Task.id == task_id,
+            Task.owner_id == owner_id,
+        )
+    )
+
+    if task is None:
+        raise TaskNotFoundError("Task not found")
+
+    return task
+
+
+def create_task(
+    db: Session,
+    title: str,
+    owner_id: int,
+) -> Task:
     task = Task(
         title=title,
         status="TODO",
+        owner_id=owner_id,
         created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
