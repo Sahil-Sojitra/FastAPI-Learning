@@ -1,6 +1,6 @@
 import jwt
 
-from app.settings import JWT_ALGORITHM, JWT_SECRET
+from app.core.config import JWT_ALGORITHM, JWT_SECRET
 from datetime import datetime, timedelta, timezone
 
 def test_register_user(client):

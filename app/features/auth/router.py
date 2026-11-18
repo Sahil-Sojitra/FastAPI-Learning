@@ -1,36 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth_dependencies import get_current_user
-from app.models import User
-from app.schemas import UserRead
+from app.core.security import create_access_token
+from app.db.session import get_db
+from app.features.auth.dependencies import get_current_user
+from app.features.auth.exceptions import EmailAlreadyRegisteredError, InvalidCredentialsError
+from app.features.auth.models import User
+from app.features.auth.schemas import TokenRead, UserLogin, UserRead, UserRegister
+from app.features.auth.service import authenticate_user, register_user
 
-from app.auth_service import (
-    EmailAlreadyRegisteredError,
-    register_user,
-)
-from app.database import get_db
-from app.schemas import UserCreate, UserRead
-
-from app.auth_service import (
-    InvalidCredentialsError,
-    authenticate_user,
-)
-from app.schemas import TokenRead, UserLogin
-from app.security import create_access_token
-
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 @router.post("/register", status_code=201, response_model=UserRead)
 def register(
-    payload: UserCreate,
+    payload: UserRegister,
     db: Session = Depends(get_db),
 ):
     try:
         return register_user(
             db,
-            email=str(payload.email),
+            email=payload.email,
             password=payload.password,
         )
     except EmailAlreadyRegisteredError as exc:
@@ -45,7 +35,7 @@ def login(
     try:
         user = authenticate_user(
             db,
-            email=str(payload.email),
+            email=payload.email,
             password=payload.password,
         )
     except InvalidCredentialsError as exc:
