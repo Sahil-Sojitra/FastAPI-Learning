@@ -1,10 +1,23 @@
+"""Learning script demonstrating transactional rollback on database integrity errors.
+
+Usage:
+    python scripts/learning/check_rollback.py
+"""
+import sys
+from pathlib import Path
+
+# Add project root to sys.path so 'app' package is found
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.database import Base
-from app.models import Task
-from app.task_service import _commit, create_task
+from app.db.model_registry import Base
+from app.features.tasks.models import Task
+from app.features.tasks.service import _commit, create_task
 
 
 def main():
@@ -22,7 +35,7 @@ def main():
         else:
             raise AssertionError("Expected missing title to fail")
 
-        task = create_task(db, title="Task after rollback")
+        task = create_task(db, title="Task after rollback", owner_id=1)
         print("Saved:", task.title, task.status)
 
         rows = list(db.scalars(select(Task)))
